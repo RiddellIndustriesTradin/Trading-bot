@@ -56,31 +56,33 @@ class KrakenAPI:
             logger.error(f"Failed to initialize Kraken: {str(e)}")
             raise
     
-    def get_balance(self) -> Dict:
+    def get_balance(self) -> Tuple[bool, float, str]:
         """
-        Get account balance.
-        
+        Get current account equity.
+
+        Tries USD first (current funding), falls back to USDT (legacy).
+
         Returns:
-            Dict with available and total balances
+            (success, equity, error_msg)
         """
         try:
             balance = self.exchange.fetch_balance()
-            
-            # Extract USDT balance
-            usdt_balance = balance.get('USDT', {})
-            
-            result = {
-                'equity': usdt_balance.get('total', 0),
-                'available': usdt_balance.get('free', 0),
-                'used': usdt_balance.get('used', 0),
-            }
-            
-            logger.debug(f"Balance: ${result['equity']:.2f}")
-            return result
-        
+
+            # Try USD first (current funding), then USDT (legacy support)
+            for quote in ('USD', 'USDT'):
+                quote_balance = balance.get(quote, {})
+                if quote_balance:
+                    equity = float(quote_balance.get('total', 0) or 0)
+                    logger.debug(f"Balance: ${equity:.2f} {quote}")
+                    return True, equity, ""
+
+            # No matching currency found — return 0 cleanly so caller can decide
+            logger.warning("No USD or USDT balance found")
+            return True, 0.0, ""
+
         except Exception as e:
             logger.error(f"Failed to fetch balance: {str(e)}")
-            raise
+            return False, 0.0, str(e)
     
     def get_open_positions(self, symbol: str = None) -> Dict:
         """
