@@ -223,11 +223,26 @@ class TradingBot:
         if sl_distance < 0.01:
             return {"status": "rejected", "message": "SL distance too small"}, 400
         
-        qty, risk_usd = self.position_sizer.calculate_position(
-            equity=equity,
+        # Supertrend sanity check — reject if SL >10% from entry price
+        # Catches wrong-plot-value scenarios before placing orders on Kraken
+        if sl_distance / price > 0.10:
+            logger.error(
+                f"Supertrend sanity check failed: "
+                f"price={price}, supertrend={supertrend}, "
+                f"distance={sl_distance/price:.2%}"
+            )
+            return {
+                "status": "rejected",
+                "message": "Supertrend value fails sanity check (>10% from entry)"
+            }, 400
+        
+        position = self.position_sizer.calculate(
+            account_equity=equity,
             entry_price=price,
             stop_loss=supertrend
         )
+        qty = position["quantity"]
+        risk_usd = position["risk_amount"]
         
         if qty <= 0:
             return {"status": "rejected", "message": "Position size invalid"}, 400
