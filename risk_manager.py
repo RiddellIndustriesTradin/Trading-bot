@@ -63,7 +63,7 @@ class RiskManager:
             "daily_pnl": 0,
             "consecutive_losses": 0,
             "paused_until": None,
-            "peak_equity": 100000,  # Baseline
+            "peak_equity": 0,  # Set on first equity update
             "drawdown_reduction_active": False,
             "winners_since_drawdown": 0,
         }
