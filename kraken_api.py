@@ -12,6 +12,19 @@ logger = logging.getLogger(__name__)
 
 
 class KrakenAPI:
+    """Kraken spot exchange wrapper via CCXT."""
+
+    @staticmethod
+    def _normalize_symbol(symbol: str) -> str:
+        """Convert webhook symbol (ETHUSD, ETHUSDT) to CCXT spot format (ETH/USD, ETH/USDT)."""
+        if '/' in symbol:
+            return symbol
+        for quote in ('USDT', 'USD'):
+            if symbol.endswith(quote):
+                base = symbol[:-len(quote)]
+                return f"{base}/{quote}"
+        return symbol
+
     """CCXT-based Kraken Futures trading interface."""
     
     def __init__(self, api_key: str, api_secret: str, sandbox: bool = False):
@@ -133,9 +146,8 @@ class KrakenAPI:
             if quantity <= 0:
                 return False, {}, f"Invalid quantity: {quantity}"
             
-            # Standardize symbol format for CCXT
-            if '/' not in symbol:
-                symbol = symbol.replace('USDT', '/USDT')
+            # Normalize symbol to CCXT spot format
+            symbol = self._normalize_symbol(symbol)
             
             logger.info(f"Placing {side.upper()} {quantity} {symbol}")
             
@@ -243,8 +255,8 @@ class KrakenAPI:
             (success: bool, order_data: dict, error: str)
         """
         try:
-            # Format symbol for CCXT (Kraken Futures)
-            ccxt_symbol = symbol.replace('USDT', '/USDT:USDT')
+            # Normalize symbol to CCXT spot format (spot-only bot)
+            ccxt_symbol = self._normalize_symbol(symbol)
             
             order = self.exchange.create_order(
                 symbol=ccxt_symbol,
@@ -275,11 +287,8 @@ class KrakenAPI:
             (success, error_msg)
         """
         try:
-            # Format symbol for CCXT if needed
-            if '/' not in symbol:
-                ccxt_symbol = symbol.replace('USDT', '/USDT:USDT')
-            else:
-                ccxt_symbol = symbol
+            # Normalize symbol to CCXT spot format (spot-only bot)
+            ccxt_symbol = self._normalize_symbol(symbol)
             
             self.exchange.cancel_order(order_id, ccxt_symbol)
             logger.info(f"✓ Order {order_id} cancelled")

@@ -19,7 +19,7 @@ VALID_ACTIONS = {
     "CLOSE_TIMEOUT"
 }
 
-VALID_SYMBOLS = {"ETHUSDT", "BTCUSDT", "SOLUSDT"}  # Extensible
+VALID_SYMBOLS = {"ETHUSDT", "BTCUSDT", "SOLUSDT", "ETHUSD", "BTCUSD", "SOLUSD"}  # Extensible — both USDT and USD pairs
 
 
 class SignalParser:
