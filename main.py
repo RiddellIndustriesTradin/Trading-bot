@@ -448,8 +448,10 @@ class TradingBot:
                 return self._handle_exit(symbol, action)
         
         except Exception as e:
-            logger.error(f"Webhook exception: {str(e)}")
-            return {"status": "error", "message": str(e)}, 500
+            import traceback
+            tb = traceback.format_exc()
+            logger.error(f"Webhook exception: {str(e)}\n{tb}")
+            return {"status": "error", "message": str(e), "traceback": tb}, 500
 
 
 # Initialize bot (global)
