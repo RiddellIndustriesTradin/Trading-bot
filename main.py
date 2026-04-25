@@ -431,8 +431,8 @@ class TradingBot:
         """
         try:
             # Parse signal
-            parsed, error = self.signal_parser.parse(payload)
-            if not parsed:
+            success, parsed, error = self.signal_parser.parse(payload)
+            if not success:
                 return {"status": "rejected", "message": error}, 400
             
             symbol = payload.get('symbol')
