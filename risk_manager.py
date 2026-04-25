@@ -111,20 +111,22 @@ class RiskManager:
         if self.state["trades_today"] >= self.max_daily_trades:
             return False, f"❌ Daily trade limit ({self.max_daily_trades}) reached"
         
-        # Check daily loss limit
-        if self.state["daily_pnl"] <= (current_equity * self.max_daily_loss):
+        # Check daily loss limit (only meaningful if we've actually lost something today)
+        if self.state["daily_pnl"] < 0 and self.state["daily_pnl"] <= (current_equity * self.max_daily_loss):
             return False, f"❌ Daily loss limit (-3%) reached: ${self.state['daily_pnl']:.2f}"
         
         # Check hard stop drawdown
         drawdown_pct = self._calculate_drawdown(current_equity)
         if drawdown_pct >= self.max_drawdown_hard_stop:
-            return False, f"🛑 HARD STOP: Drawdown {drawdown_pct:.1f}% ≥ {self.max_drawdown_hard_stop*100:.0f}%"
+            return False, f"🛑 HARD STOP: Drawdown {drawdown_pct*100:.1f}% ≥ {self.max_drawdown_hard_stop*100:.0f}%"
         
         return True, "✓ Trading allowed"
     
     def _calculate_drawdown(self, current_equity: float) -> float:
         """Calculate drawdown from peak."""
-        peak = self.state.get("peak_equity", 100000)
+        # Default peak to 0 so unfunded/uninitialized state returns 0% drawdown.
+        # Real peak gets set by record_trade_exit() once equity is actually tracked.
+        peak = self.state.get("peak_equity", 0)
         if peak == 0:
             return 0
         return (peak - current_equity) / peak
