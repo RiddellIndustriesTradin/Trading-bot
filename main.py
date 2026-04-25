@@ -201,8 +201,14 @@ class TradingBot:
         Returns:
             (response_dict, http_status_code)
         """
-        # Check risk gates
-        can_trade, reason = self.risk_manager.can_trade()
+        # Get account balance FIRST (needed for risk gates)
+        success, equity, error = self.get_account_balance()
+        if not success:
+            logger.error(f"Failed to get balance: {error}")
+            return {"status": "error", "message": "Balance query failed"}, 500
+        
+        # Check risk gates (needs current equity)
+        can_trade, reason = self.risk_manager.can_trade(equity)
         if not can_trade:
             logger.warning(f"Entry blocked: {reason}")
             return {"status": "rejected", "message": reason}, 403
@@ -211,12 +217,6 @@ class TradingBot:
         normalized_symbol = symbol.replace('/', '').replace(':USDT', '')
         if any(normalized_symbol in pos_sym for pos_sym in self.open_positions.keys()):
             return {"status": "rejected", "message": "Position already open"}, 409
-        
-        # Get account balance
-        success, equity, error = self.get_account_balance()
-        if not success:
-            logger.error(f"Failed to get balance: {error}")
-            return {"status": "error", "message": "Balance query failed"}, 500
         
         # Calculate position size
         sl_distance = abs(price - supertrend)
