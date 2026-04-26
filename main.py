@@ -259,7 +259,7 @@ class TradingBot:
                 logger.error(f"Entry order failed: {error}")
                 return {"status": "error", "message": error}, 500
             
-            entry_price = order.get('average', price)
+            entry_price = order.get('average') or price
             
             # Recalculate TP based on actual entry
             sl_distance = abs(entry_price - supertrend)
