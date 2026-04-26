@@ -312,6 +312,7 @@ class KrakenAPI:
             (success, ticker_dict, error_msg)
         """
         try:
+            symbol = self._normalize_symbol(symbol)
             ticker = self.exchange.fetch_ticker(symbol)
             
             result = {

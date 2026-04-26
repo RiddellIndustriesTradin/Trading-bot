@@ -351,9 +351,12 @@ class TradingBot:
                     logger.info(f"Exchange SL already triggered for {symbol} — treating as successful exit")
                     # Use last ticker price as exit price
                     try:
-                        ticker = self.kraken.get_ticker(symbol)
-                        exit_price = ticker.get('last', trade['entry_price'])
-                    except:
+                        ticker_ok, ticker, ticker_err = self.kraken.get_ticker(symbol)
+                        if ticker_ok:
+                            exit_price = ticker.get('last', trade['entry_price'])
+                        else:
+                            exit_price = trade['entry_price']
+                    except Exception:
                         exit_price = trade['entry_price']
                     order = {'close_price': exit_price}
                     success = True
@@ -365,9 +368,13 @@ class TradingBot:
             # Fallback if price is 0 or None
             if not exit_price or exit_price == 0:
                 try:
-                    ticker = self.kraken.get_ticker(symbol)
-                    exit_price = ticker.get('last', trade['entry_price'])
-                    logger.warning(f"Exit: fill price unavailable for {symbol}, using last price: {exit_price}")
+                    ticker_ok, ticker, ticker_err = self.kraken.get_ticker(symbol)
+                    if ticker_ok:
+                        exit_price = ticker.get('last', trade['entry_price'])
+                        logger.warning(f"Exit: fill price unavailable for {symbol}, using last price: {exit_price}")
+                    else:
+                        logger.error(f"Exit: ticker fallback failed: {ticker_err}, using entry price")
+                        exit_price = trade['entry_price']
                 except Exception as e:
                     logger.error(f"Exit: failed to get fallback price: {e}, using entry price")
                     exit_price = trade['entry_price']
@@ -380,17 +387,7 @@ class TradingBot:
             bars_held = self._calculate_bars_held(trade['entry_time'])
             
             # Log trade
-            self.logger.log_trade(
-                symbol=symbol,
-                side=trade['side'],
-                entry_price=trade['entry_price'],
-                exit_price=exit_price,
-                quantity=trade['quantity'],
-                pnl_usd=pnl_usd,
-                pnl_pct=pnl_pct,
-                exit_type=exit_type,
-                bars_held=bars_held
-            )
+            # log_trade call removed here - moved to after trade-dict enrichment
             
             # Update risk manager
             balance_ok, current_equity, balance_err = self.kraken.get_balance()
@@ -401,10 +398,16 @@ class TradingBot:
             
             # Send Telegram alert
             # Enrich trade dict with exit info, then dispatch to right alerter variant
+            trade['timestamp'] = datetime.now().isoformat()
             trade['exit_price'] = exit_price
+            trade['exit_type'] = exit_type
             trade['p&l_usd'] = pnl_usd
             trade['p&l_pct'] = pnl_pct
             trade['bars_held'] = bars_held
+
+            # Log trade to CSV (now that trade dict has all required keys)
+            self.logger.log_trade(trade)
+
             if exit_type == 'CLOSE_HARDSTOP':
                 self.alerter.alert_exit_hardstop(trade)
             elif exit_type == 'CLOSE_SOFTSTOP':
