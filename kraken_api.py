@@ -173,7 +173,7 @@ class KrakenAPI:
             logger.info(f"✓ Order placed: {result['order_id']}")
             return True, result, ""
         
-        except ccxt.InsufficientBalance as e:
+        except ccxt.InsufficientFunds as e:
             logger.error(f"Insufficient balance: {str(e)}")
             return False, {}, f"Insufficient balance: {str(e)}"
         
@@ -297,7 +297,7 @@ class KrakenAPI:
             return True, ""
         
         except Exception as e:
-            error_msg = f"Failed to cancel order {order_id}: {str(e)}"
+            error_msg = f"Failed to cancel order {order_id}: {type(e).__name__}: {repr(e)}"
             logger.error(error_msg)
             return False, error_msg
     

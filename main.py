@@ -335,8 +335,12 @@ class TradingBot:
                     trade['sl_order_id'], symbol
                 )
                 if not cancel_success:
-                    logger.warning(f"Failed to cancel SL: {cancel_error}")
+                    logger.error(f"Cannot close: SL cancel failed for {trade['sl_order_id']}: {cancel_error}. Manual intervention required.")
+                    self.alerter.alert_risk_event("CLOSE_BLOCKED_SL_CANCEL_FAILED", f"Cannot close {symbol}: SL cancel failed. Position remains open. Error: {cancel_error}")
+                    return {"status": "error", "message": f"SL cancel failed, close aborted: {cancel_error}"}, 500
             
+            else:
+                logger.warning(f"No sl_order_id in position dict for {symbol} - skipping SL cancel, attempting close anyway")
             # Close position
             # Exit is always a sell on spot (long-only mode)
             success, order, error = self.kraken.place_market_order(symbol, 'sell', trade['quantity'])
