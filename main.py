@@ -449,11 +449,11 @@ class TradingBot:
             if not success:
                 return {"status": "rejected", "message": error}, 400
             
-            symbol = payload.get('symbol')
-            action = payload.get('action')
-            price = float(payload.get('price', 0))
-            supertrend = float(payload.get('supertrend', 0))
-            rsi = float(payload.get('rsi', 0))
+            symbol = parsed['symbol']
+            action = parsed['action']
+            price = parsed.get('price') or 0
+            supertrend = parsed.get('supertrend') or 0
+            rsi = parsed.get('rsi') or 0
             
             # Route to handler
             if action in ['LONG', 'SHORT']:
