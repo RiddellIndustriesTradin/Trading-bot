@@ -249,11 +249,10 @@ class TradingBot:
         
         # Place market entry
         try:
-            success, order, error = self.kraken.place_order(
+            success, order, error = self.kraken.place_market_order(
                 symbol=symbol,
                 side='buy' if action == 'LONG' else 'sell',
-                order_type='market',
-                amount=qty
+                quantity=qty
             )
             
             if not success:
