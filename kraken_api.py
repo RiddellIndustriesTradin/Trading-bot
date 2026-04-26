@@ -262,11 +262,11 @@ class KrakenAPI:
             
             order = self.exchange.create_order(
                 symbol=ccxt_symbol,
-                type='stop',
+                type='stop-loss',
                 side=side,
                 amount=quantity,
                 price=stop_price,
-                params={'stopPrice': stop_price}
+                params={'trading_agreement': 'agree'}
             )
             
             logger.info(f"✓ Exchange SL placed for {symbol}: {side} @ {stop_price} qty={quantity}")

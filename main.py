@@ -295,18 +295,14 @@ class TradingBot:
             else:
                 logger.error(f"⚠️ Exchange SL placement failed: {sl_error}")
                 trade['sl_order_id'] = None
-                self.alerter.alert_risk_event(f"⚠️ SL Placement Failed: {sl_error}")
+                self.alerter.alert_risk_event("SL_PLACEMENT_FAILED", f"⚠️ SL Placement Failed: {sl_error}")
                 self._save_positions()
             
             # Send Telegram alert
-            self.alerter.alert_entry(
-                symbol=symbol,
-                side=action,
-                entry_price=entry_price,
-                stop_loss=supertrend,
-                take_profit=take_profit,
-                quantity=qty
-            )
+            if action == 'LONG':
+                self.alerter.alert_entry_long(trade)
+            else:
+                self.alerter.alert_entry_short(trade)
             
             # Update risk manager
             self.risk_manager.log_trade(entry_price, supertrend, action == 'LONG')
