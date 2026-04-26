@@ -11,7 +11,7 @@ kraken:
 
 trading:
   # Risk per trade: 1% of account equity (HARD CAP)
-  risk_per_trade: 0.01
+  risk_per_trade: 0.005
   
   # Max trades per day (UTC midnight reset)
   max_daily_trades: 2
