@@ -305,7 +305,8 @@ class TradingBot:
                 self.alerter.alert_entry_short(trade)
             
             # Update risk manager
-            self.risk_manager.log_trade(entry_price, supertrend, action == 'LONG')
+            if not self.risk_manager.record_trade_entry():
+                logger.warning("record_trade_entry returned False after entry+SL - daily limit race?")
             
             logger.info(f"✓ Entry: {action} {symbol} @ {entry_price} | SL: {supertrend} | TP: {take_profit}")
             return {"status": "success", "entry_price": entry_price}, 200
@@ -337,7 +338,8 @@ class TradingBot:
                     logger.warning(f"Failed to cancel SL: {cancel_error}")
             
             # Close position
-            success, order, error = self.kraken.close_position(symbol, trade['quantity'])
+            # Exit is always a sell on spot (long-only mode)
+            success, order, error = self.kraken.place_market_order(symbol, 'sell', trade['quantity'])
             
             if not success:
                 # If Kraken already triggered the SL, position is already closed
@@ -354,7 +356,7 @@ class TradingBot:
                 else:
                     return {"status": "error", "message": error}, 500
             
-            exit_price = order.get('close_price')
+            exit_price = order.get('average') or order.get('close_price')
             
             # Fallback if price is 0 or None
             if not exit_price or exit_price == 0:
@@ -387,18 +389,28 @@ class TradingBot:
             )
             
             # Update risk manager
-            is_win = pnl_usd > 0
-            self.risk_manager.log_exit(is_win, pnl_pct)
+            balance_ok, current_equity, balance_err = self.kraken.get_balance()
+            if not balance_ok:
+                logger.warning(f"Could not fetch balance for risk manager update: {balance_err}")
+                current_equity = trade['entry_price'] * trade['quantity']  # rough fallback
+            self.risk_manager.record_trade_exit(pnl_usd, current_equity)
             
             # Send Telegram alert
-            self.alerter.alert_exit(
-                symbol=symbol,
-                exit_type=exit_type,
-                exit_price=exit_price,
-                pnl_usd=pnl_usd,
-                pnl_pct=pnl_pct,
-                bars_held=bars_held
-            )
+            # Enrich trade dict with exit info, then dispatch to right alerter variant
+            trade['exit_price'] = exit_price
+            trade['p&l_usd'] = pnl_usd
+            trade['p&l_pct'] = pnl_pct
+            trade['bars_held'] = bars_held
+            if exit_type == 'CLOSE_HARDSTOP':
+                self.alerter.alert_exit_hardstop(trade)
+            elif exit_type == 'CLOSE_SOFTSTOP':
+                self.alerter.alert_exit_softstop(trade)
+            elif exit_type == 'CLOSE_TAKEPROFIT':
+                self.alerter.alert_exit_takeprofit(trade)
+            elif exit_type == 'CLOSE_TIMEOUT':
+                self.alerter.alert_exit_timeout(trade)
+            else:
+                logger.warning(f"Unknown exit_type for alerter dispatch: {exit_type}")
             
             # Remove from open positions
             del self.open_positions[symbol]
