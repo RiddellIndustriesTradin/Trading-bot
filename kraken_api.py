@@ -25,6 +25,59 @@ class KrakenAPI:
                 return f"{base}/{quote}"
         return symbol
 
+    @staticmethod
+    def _retry_call(callable_fn, label: str, max_attempts: int = 3, base_delay: float = 1.0):
+        """  # SESSION5_RETRY_APPLIED
+        Call `callable_fn` with retry-on-transient-error.
+
+        Retries on: RequestTimeout, NetworkError, ExchangeNotAvailable, DDoSProtection.
+        Does NOT retry on: InsufficientFunds, InvalidOrder, AuthenticationError, BadRequest.
+
+        Backoff: base_delay, base_delay*2, base_delay*4 (so 1s, 2s, 4s by default).
+        Total worst-case wall time before giving up: sum of sleeps = 7s for default.
+
+        Args:
+            callable_fn: zero-arg callable that performs the API call
+            label: human-readable label for logging (e.g. "fetch_balance")
+            max_attempts: how many tries before giving up (default 3)
+            base_delay: seconds to sleep before first retry (default 1.0)
+
+        Returns:
+            Whatever `callable_fn` returns on success.
+
+        Raises:
+            The last exception if all attempts exhausted, or any non-transient
+            exception immediately on first occurrence.
+        """
+        transient_errors = (
+            ccxt.RequestTimeout,
+            ccxt.NetworkError,
+            ccxt.ExchangeNotAvailable,
+            ccxt.DDoSProtection,
+        )
+        last_exc = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return callable_fn()
+            except transient_errors as e:
+                last_exc = e
+                if attempt < max_attempts:
+                    delay = base_delay * (2 ** (attempt - 1))
+                    logger.warning(
+                        f"{label}: transient error on attempt {attempt}/{max_attempts}: "
+                        f"{type(e).__name__}: {str(e)[:120]}. Retrying in {delay}s..."
+                    )
+                    time.sleep(delay)
+                else:
+                    logger.error(
+                        f"{label}: gave up after {max_attempts} attempts. "
+                        f"Last error: {type(e).__name__}: {str(e)[:160]}"
+                    )
+            # Note: non-transient errors propagate out of this function
+            # immediately so callers can handle them in their own try/except
+            # blocks. Do not catch them here.
+        raise last_exc
+
     """CCXT-based Kraken Futures trading interface."""
     
     def __init__(self, api_key: str, api_secret: str, sandbox: bool = False):
@@ -66,7 +119,10 @@ class KrakenAPI:
             (success, equity, error_msg)
         """
         try:
-            balance = self.exchange.fetch_balance()
+            balance = self._retry_call(
+                lambda: self.exchange.fetch_balance(),
+                label="fetch_balance"
+            )
 
             # Try USD first (current funding), then USDT (legacy support)
             for quote in ('USD', 'USDT'):
@@ -153,11 +209,14 @@ class KrakenAPI:
             
             logger.info(f"Placing {side.upper()} {quantity} {symbol}")
             
-            # Place market order
-            order = self.exchange.create_market_order(
-                symbol=symbol,
-                side=side.lower(),
-                amount=quantity,
+            # Place market order (with retry-on-transient)
+            order = self._retry_call(
+                lambda: self.exchange.create_market_order(
+                    symbol=symbol,
+                    side=side.lower(),
+                    amount=quantity,
+                ),
+                label=f"create_market_order({side.lower()} {quantity} {symbol})"
             )
             
             result = {
@@ -260,13 +319,16 @@ class KrakenAPI:
             # Normalize symbol to CCXT spot format (spot-only bot)
             ccxt_symbol = self._normalize_symbol(symbol)
             
-            order = self.exchange.create_order(
-                symbol=ccxt_symbol,
-                type='stop-loss',
-                side=side,
-                amount=quantity,
-                price=stop_price,
-                params={'trading_agreement': 'agree'}
+            order = self._retry_call(
+                lambda: self.exchange.create_order(
+                    symbol=ccxt_symbol,
+                    type='stop-loss',
+                    side=side,
+                    amount=quantity,
+                    price=stop_price,
+                    params={'trading_agreement': 'agree'}
+                ),
+                label=f"create_stop_loss_order({side} {quantity} @ {stop_price})"
             )
             
             logger.info(f"✓ Exchange SL placed for {symbol}: {side} @ {stop_price} qty={quantity}")
@@ -292,7 +354,10 @@ class KrakenAPI:
             # Normalize symbol to CCXT spot format (spot-only bot)
             ccxt_symbol = self._normalize_symbol(symbol)
             
-            self.exchange.cancel_order(order_id, ccxt_symbol)
+            self._retry_call(
+                lambda: self.exchange.cancel_order(order_id, ccxt_symbol),
+                label=f"cancel_order({order_id})"
+            )
             logger.info(f"✓ Order {order_id} cancelled")
             return True, ""
         
@@ -313,7 +378,10 @@ class KrakenAPI:
         """
         try:
             symbol = self._normalize_symbol(symbol)
-            ticker = self.exchange.fetch_ticker(symbol)
+            ticker = self._retry_call(
+                lambda: self.exchange.fetch_ticker(symbol),
+                label=f"fetch_ticker({symbol})"
+            )
             
             result = {
                 'symbol': ticker['symbol'],

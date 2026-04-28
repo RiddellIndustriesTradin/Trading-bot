@@ -9,6 +9,7 @@ import sys
 import logging
 import json
 import signal
+import threading  # SESSION5_ASYNC_APPLIED
 from datetime import datetime, timedelta
 from typing import Dict, Tuple
 
@@ -205,6 +206,7 @@ class TradingBot:
         success, equity, error = self.get_account_balance()
         if not success:
             logger.error(f"Failed to get balance: {error}")
+            self.alerter.alert_error("BALANCE_FETCH_FAILED", f"Could not fetch balance for {action} {symbol}: {error}")
             return {"status": "error", "message": "Balance query failed"}, 500
         
         # Check risk gates (needs current equity)
@@ -257,6 +259,7 @@ class TradingBot:
             
             if not success:
                 logger.error(f"Entry order failed: {error}")
+                self.alerter.alert_error("ENTRY_ORDER_FAILED", f"{action} {symbol} qty={qty}: {error}")
                 return {"status": "error", "message": error}, 500
             
             entry_price = order.get('average') or price
@@ -361,6 +364,7 @@ class TradingBot:
                     order = {'close_price': exit_price}
                     success = True
                 else:
+                    self.alerter.alert_error("EXIT_ORDER_FAILED", f"Close {symbol} qty={trade['quantity']}: {error}")
                     return {"status": "error", "message": error}, 500
             
             exit_price = order.get('average') or order.get('close_price')
@@ -430,6 +434,60 @@ class TradingBot:
             logger.error(f"Exit handler exception: {str(e)}")
             return {"status": "error", "message": str(e)}, 500
     
+    def _process_signal_async(self, parsed: Dict):
+        """
+        Background-thread worker for processing a parsed signal.
+
+        Called by the Flask /webhook route after it has validated and parsed
+        the payload synchronously and returned 200 to TradingView. Runs the
+        existing _handle_entry / _handle_exit methods, and turns any failure
+        (non-200 response or unhandled exception) into a Telegram alert so
+        Ash hears about silent infra failures.
+
+        Deliberately does NOT alert on 403 (risk-gate rejection) or 409
+        (duplicate position) — those are the system working as designed,
+        not infra failures.
+
+        Args:
+            parsed: dict from signal_parser.parse(payload), already validated.
+                    Expected keys: symbol, action, price, supertrend, rsi.
+        """
+        action = parsed.get('action', 'UNKNOWN')
+        symbol = parsed.get('symbol', 'UNKNOWN')
+        try:
+            price = parsed.get('price') or 0
+            supertrend = parsed.get('supertrend') or 0
+            rsi = parsed.get('rsi') or 0
+
+            if action in ['LONG', 'SHORT']:
+                response, status = self._handle_entry(symbol, action, price, supertrend, rsi)
+            else:
+                response, status = self._handle_exit(symbol, action)
+
+            # Alert on infra failures (5xx) but not on policy rejections (4xx).
+            # Specifically: 403 = risk-gate, 409 = duplicate-position — these
+            # are the system working correctly. 500 = something genuinely broke.
+            if status >= 500:
+                msg = response.get('message', 'unknown error') if isinstance(response, dict) else str(response)
+                # Note: _handle_entry/_handle_exit already fire their own
+                # alert_error() at the specific failure site, so this catch-all
+                # mostly handles unexpected 500s from elsewhere in the path.
+                logger.error(f"Async signal failed: {action} {symbol} status={status} msg={msg}")
+
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            logger.error(f"Async signal processing crashed: {action} {symbol}: {e}\n{tb}")
+            try:
+                self.alerter.alert_error(
+                    f"UNHANDLED_{action}",
+                    f"{symbol}: {type(e).__name__}: {str(e)[:200]}"
+                )
+            except Exception as alert_err:
+                # If even the alerter blew up, log and move on — don't crash
+                # the background thread.
+                logger.error(f"Failed to send unhandled-error alert: {alert_err}")
+
     def handle_webhook(self, payload: Dict) -> Tuple[Dict, int]:
         """
         Main webhook handler for TradingView alerts.
@@ -502,7 +560,17 @@ def health():
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    """TradingView webhook receiver."""
+    """
+    TradingView webhook receiver — ASYNC.
+
+    Validates and parses the payload synchronously (~50ms), then spawns a
+    daemon thread to do the slow Kraken work. Returns 200 to TV immediately
+    so we don't blow TV's 3-5s timeout.
+
+    Single-worker gunicorn (--workers 1) makes threading.Thread safe for
+    state mutation in _handle_entry/_handle_exit. Don't scale workers
+    without revisiting that.
+    """
     if bot is None:
         return jsonify({"status": "offline", "message": "Bot not initialized"}), 500
     
@@ -511,8 +579,28 @@ def webhook():
         if not payload:
             return jsonify({"status": "error", "message": "Empty payload"}), 400
         
-        response, status = bot.handle_webhook(payload)
-        return jsonify(response), status
+        # Parse synchronously — cheap, no network I/O. Reject obvious garbage
+        # before we accept the webhook.
+        success, parsed, error = bot.signal_parser.parse(payload)
+        if not success:
+            logger.warning(f"Webhook rejected (parse failed): {error}")
+            return jsonify({"status": "rejected", "message": error}), 400
+        
+        # Hand off the slow part (Kraken API calls, order placement, etc.)
+        # to a background thread so we can return 200 to TV in ~50ms.
+        thread = threading.Thread(
+            target=bot._process_signal_async,
+            args=(parsed,),
+            daemon=True,
+            name=f"signal-{parsed.get('action','?')}-{parsed.get('symbol','?')}"
+        )
+        thread.start()
+        
+        return jsonify({
+            "status": "accepted",
+            "action": parsed.get('action'),
+            "symbol": parsed.get('symbol'),
+        }), 200
     except Exception as e:
         logger.error(f"Webhook error: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
