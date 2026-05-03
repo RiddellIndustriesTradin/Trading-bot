@@ -1,22 +1,13 @@
 """
-Risk Manager — Variant C Calendar Strategy
-Enforces daily trading limits, loss caps, drawdown protection, and the
-layered consecutive-loss policy.
-
-Layered consecutive-loss handling (Variant C policy):
-  Layer 1: At consecutive_losses_warning (default 3) — informational alert
-           via Telegram. No trading action. ~12% probability event at 50% WR.
-  Layer 2: At max_consecutive_losses (default 5) — hard pause requiring
-           manual /resume endpoint to clear. ~3% probability event.
-           Replaces the old 24H auto-resume — Variant C trades weekly so
-           24H is meaningless; manual review is the right safety brake.
+Risk Manager
+Enforces daily trading limits, loss caps, and drawdown protection.
 """
 
 import logging
 import json
 import os
-from datetime import datetime
-from typing import Dict, Tuple
+from datetime import datetime, timedelta
+from typing import Dict, Tuple, List
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +18,8 @@ class RiskManager:
     """Enforce risk limits per trading session."""
     
     def __init__(self, 
-                 max_daily_trades: int = 1,
+                 max_daily_trades: int = 2,
                  max_consecutive_losses: int = 5,
-                 consecutive_losses_warning: int = 3,
                  max_daily_loss: float = -0.03,
                  max_drawdown: float = 0.15,
                  max_drawdown_hard_stop: float = 0.20,
@@ -38,24 +28,15 @@ class RiskManager:
         Initialize risk manager.
         
         Args:
-            max_daily_trades: Max trades per day UTC (Variant C: 1)
-            max_consecutive_losses: Hard pause threshold — manual resume required
-            consecutive_losses_warning: Layer 1 informational threshold
+            max_daily_trades: Max trades per day (UTC)
+            max_consecutive_losses: Max losses before 24H pause
             max_daily_loss: Max loss % per day (-3% = -0.03)
-            max_drawdown: Drawdown % threshold to halve position sizing (15%)
+            max_drawdown: Drawdown % before 0.5% position sizing
             max_drawdown_hard_stop: Drawdown % for total halt (20%)
             state_file: Path to persistent state JSON
         """
-        # Sanity: warning threshold must be below hard threshold
-        if consecutive_losses_warning >= max_consecutive_losses:
-            raise ValueError(
-                f"consecutive_losses_warning ({consecutive_losses_warning}) "
-                f"must be less than max_consecutive_losses ({max_consecutive_losses})"
-            )
-        
         self.max_daily_trades = max_daily_trades
         self.max_consecutive_losses = max_consecutive_losses
-        self.consecutive_losses_warning = consecutive_losses_warning
         self.max_daily_loss = max_daily_loss
         self.max_drawdown = max_drawdown
         self.max_drawdown_hard_stop = max_drawdown_hard_stop
@@ -70,9 +51,6 @@ class RiskManager:
                 with open(self.state_file, 'r') as f:
                     state = json.load(f)
                 logger.debug(f"Loaded risk state: {state}")
-                # Migrate legacy state files: ensure new fields exist
-                state.setdefault("paused_until_manual_resume", False)
-                state.setdefault("losses_warning_fired", False)
                 return state
             except Exception as e:
                 logger.error(f"Failed to load state: {str(e)}")
@@ -84,10 +62,8 @@ class RiskManager:
             "trades_today": 0,
             "daily_pnl": 0,
             "consecutive_losses": 0,
-            "paused_until_manual_resume": False,  # Variant C: manual resume flag
-            "losses_warning_fired": False,        # Variant C: dedupes 3-loss alert
-            "paused_until": None,                  # Legacy field, kept for backward-compat
-            "peak_equity": 0,                      # Set on first equity update
+            "paused_until": None,
+            "peak_equity": 0,  # Set on first equity update
             "drawdown_reduction_active": False,
             "winners_since_drawdown": 0,
         }
@@ -120,12 +96,16 @@ class RiskManager:
         """
         self._reset_daily()
         
-        # Layer 2 hard pause: manual resume required
-        if self.state.get("paused_until_manual_resume"):
-            return False, (
-                f"🛑 PAUSED: {self.state['consecutive_losses']} consecutive losses. "
-                f"Manual /resume required."
-            )
+        # Check pause status
+        if self.state["paused_until"]:
+            pause_until = datetime.fromisoformat(self.state["paused_until"])
+            if datetime.utcnow() < pause_until:
+                hours_left = (pause_until - datetime.utcnow()).total_seconds() / 3600
+                return False, f"⏸️ Trading paused for {hours_left:.1f}h (consecutive losses limit hit)"
+            else:
+                self.state["paused_until"] = None
+                self.state["consecutive_losses"] = 0
+                self._save_state()
         
         # Check daily trade limit
         if self.state["trades_today"] >= self.max_daily_trades:
@@ -133,7 +113,7 @@ class RiskManager:
         
         # Check daily loss limit (only meaningful if we've actually lost something today)
         if self.state["daily_pnl"] < 0 and self.state["daily_pnl"] <= (current_equity * self.max_daily_loss):
-            return False, f"❌ Daily loss limit ({self.max_daily_loss*100:.0f}%) reached: ${self.state['daily_pnl']:.2f}"
+            return False, f"❌ Daily loss limit (-3%) reached: ${self.state['daily_pnl']:.2f}"
         
         # Check hard stop drawdown
         drawdown_pct = self._calculate_drawdown(current_equity)
@@ -172,18 +152,13 @@ class RiskManager:
     def record_trade_exit(self, pnl_usd: float, current_equity: float) -> Dict:
         """
         Record trade exit. Updates daily P&L, loss streak, equity peak.
-        Implements layered consecutive-loss handling.
         
         Args:
-            pnl_usd: P&L in USD
+            pnl_usd: P&L in USDT
             current_equity: Current account equity
             
         Returns:
-            Dict with state updates and event flags:
-                - daily_pnl, consecutive_losses, drawdown, paused, reduced_position_sizing
-                - losses_warning_just_fired (bool): True if Layer 1 fired this exit
-                - circuit_break_just_engaged (bool): True if Layer 2 just engaged
-              Caller (main.py) checks these flags to dispatch the right Telegram alerts.
+            Dict with state updates
         """
         self._reset_daily()
         
@@ -193,44 +168,20 @@ class RiskManager:
         if current_equity > self.state.get("peak_equity", 0):
             self.state["peak_equity"] = current_equity
         
-        # Event flags for caller — default False, set True only on the trade where
-        # the threshold was crossed. Lets main.py fire alerts exactly once per event.
-        losses_warning_just_fired = False
-        circuit_break_just_engaged = False
-        
-        # ─── Layered consecutive-loss handling ───────────────────────────
+        # Track consecutive losses
         if pnl_usd < 0:
             self.state["consecutive_losses"] += 1
             logger.warning(f"Loss recorded. Streak: {self.state['consecutive_losses']}")
             
-            # Layer 1: Informational warning at consecutive_losses_warning threshold.
-            # Fires exactly once per streak — losses_warning_fired flag dedupes
-            # so we don't spam-alert on every subsequent loss while at 3+.
-            if (self.state["consecutive_losses"] >= self.consecutive_losses_warning
-                    and not self.state.get("losses_warning_fired")):
-                self.state["losses_warning_fired"] = True
-                losses_warning_just_fired = True
-                logger.warning(
-                    f"⚠️ Layer 1 warning: {self.state['consecutive_losses']} "
-                    f"consecutive losses (threshold: {self.consecutive_losses_warning})"
-                )
-            
-            # Layer 2: Hard pause at max_consecutive_losses. Manual resume required.
-            # Engages exactly once — paused_until_manual_resume already True is a no-op.
-            if (self.state["consecutive_losses"] >= self.max_consecutive_losses
-                    and not self.state.get("paused_until_manual_resume")):
-                self.state["paused_until_manual_resume"] = True
-                circuit_break_just_engaged = True
+            # Trigger pause if max consecutive losses hit
+            if self.state["consecutive_losses"] >= self.max_consecutive_losses:
+                pause_until = datetime.utcnow() + timedelta(hours=24)
+                self.state["paused_until"] = pause_until.isoformat()
                 logger.critical(
-                    f"🛑 CIRCUIT BREAK: {self.state['consecutive_losses']} consecutive losses "
-                    f"(threshold: {self.max_consecutive_losses}). Trading PAUSED — manual resume required."
+                    f"⏸️ Trading PAUSED for 24H due to {self.max_consecutive_losses} consecutive losses"
                 )
         else:
-            # Winner — reset loss streak and warning-fired flag
-            if self.state["consecutive_losses"] > 0:
-                logger.info(f"Loss streak broken at {self.state['consecutive_losses']}")
             self.state["consecutive_losses"] = 0
-            self.state["losses_warning_fired"] = False
             self.state["winners_since_drawdown"] = self.state.get("winners_since_drawdown", 0) + 1
             
             # Check drawdown recovery
@@ -243,10 +194,7 @@ class RiskManager:
         # Check drawdown threshold
         drawdown = self._calculate_drawdown(current_equity)
         if drawdown >= self.max_drawdown and not self.state.get("drawdown_reduction_active"):
-            logger.warning(
-                f"⚠️ Drawdown {drawdown*100:.1f}% ≥ {self.max_drawdown*100:.0f}%. "
-                f"Halving position sizing."
-            )
+            logger.warning(f"⚠️ Drawdown {drawdown*100:.1f}% ≥ {self.max_drawdown*100:.0f}%. Reducing to 0.5% position sizing")
             self.state["drawdown_reduction_active"] = True
             self.state["winners_since_drawdown"] = 0
         
@@ -255,33 +203,10 @@ class RiskManager:
         return {
             "daily_pnl": round(self.state["daily_pnl"], 2),
             "consecutive_losses": self.state["consecutive_losses"],
-            "paused": self.state.get("paused_until_manual_resume", False),
+            "paused": self.state["paused_until"] is not None,
             "drawdown": round(drawdown * 100, 2),
             "reduced_position_sizing": self.state.get("drawdown_reduction_active", False),
-            # Event flags for alerter dispatch
-            "losses_warning_just_fired": losses_warning_just_fired,
-            "circuit_break_just_engaged": circuit_break_just_engaged,
         }
-    
-    def manual_resume(self) -> Tuple[bool, str]:
-        """
-        Manually resume trading after a circuit-break pause.
-        Resets the pause flag and the consecutive loss counter.
-        
-        Returns:
-            (success, message)
-        """
-        if not self.state.get("paused_until_manual_resume"):
-            return False, "Not currently paused — no resume needed"
-        
-        previous_streak = self.state.get("consecutive_losses", 0)
-        self.state["paused_until_manual_resume"] = False
-        self.state["consecutive_losses"] = 0
-        self.state["losses_warning_fired"] = False
-        self._save_state()
-        
-        logger.info(f"✓ Trading resumed manually (was paused after {previous_streak} losses)")
-        return True, f"✓ Trading resumed (loss streak of {previous_streak} cleared)"
     
     def get_position_size_multiplier(self) -> float:
         """
@@ -301,7 +226,6 @@ class RiskManager:
             "trades_today": self.state["trades_today"],
             "daily_pnl": round(self.state["daily_pnl"], 2),
             "consecutive_losses": self.state["consecutive_losses"],
-            "paused": self.state.get("paused_until_manual_resume", False),
+            "paused": self.state["paused_until"] is not None,
             "position_size_multiplier": self.get_position_size_multiplier(),
-            "drawdown_reduction_active": self.state.get("drawdown_reduction_active", False),
         }
