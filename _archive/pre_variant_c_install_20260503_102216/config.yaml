@@ -1,0 +1,46 @@
+# Proppa Kraken Crypto Bot Configuration
+# All sensitive values are loaded from environment variables
+
+kraken:
+  # API credentials (load from env: KRAKEN_API_KEY, KRAKEN_API_SECRET)
+  api_key: ${KRAKEN_API_KEY}
+  api_secret: ${KRAKEN_API_SECRET}
+  
+  # Use testnet (false = live trading)
+  sandbox: false
+
+trading:
+  # Risk per trade: 1% of account equity (HARD CAP)
+  risk_per_trade: 0.005
+  
+  # Max trades per day (UTC midnight reset)
+  max_daily_trades: 2
+  
+  # Max consecutive losses before 24H pause
+  max_consecutive_losses: 5
+  
+  # Max daily loss % before stopping (-3% = -0.03)
+  max_daily_loss: -0.03
+  
+  # Drawdown % threshold to reduce position sizing to 0.5% (15% = 0.15)
+  max_drawdown: 0.15
+  
+  # Drawdown % hard stop (20% = 0.20, halt all trading)
+  max_drawdown_hard_stop: 0.20
+
+assets:
+  # Trading symbols (enable/disable per symbol)
+  - symbol: ETHUSDT
+    leverage: 1
+    enabled: true
+  
+  # - symbol: BTCUSDT
+  #   leverage: 1
+  #   enabled: false
+
+telegram:
+  # Telegram bot token (load from env: TELEGRAM_BOT_TOKEN)
+  bot_token: ${TELEGRAM_BOT_TOKEN}
+  
+  # Telegram chat ID (load from env: TELEGRAM_CHAT_ID)
+  chat_id: ${TELEGRAM_CHAT_ID}

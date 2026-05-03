@@ -1,16 +1,13 @@
 """
-Trade Logger — Variant C Calendar Strategy
-Logs all trades to CSV for audit trail and live-vs-backtest comparison.
+Trade Logger
+Logs all trades to CSV for audit trail and backtesting.
 Append-only, never overwrites.
-
-Schema is Variant C-specific (no take-profit field, days_held instead of bars_held)
-because trades.csv did not exist at migration time and there's no backward
-compatibility constraint with retired-bot trade logs.
 """
 
 import csv
 import logging
 import os
+from datetime import datetime
 from typing import Dict, List
 
 logger = logging.getLogger(__name__)
@@ -19,14 +16,15 @@ TRADES_CSV = "trades.csv"
 CSV_HEADERS = [
     "timestamp",
     "symbol",
-    "side",          # always "LONG" for Variant C, kept for schema clarity
+    "side",
     "entry_price",
-    "sl_price",      # renamed from "sl" — clearer it's a price not a flag
-    "exit_type",     # "MONDAY_EXIT" or "SL_HIT"
+    "sl",
+    "tp",
+    "exit_type",
     "exit_price",
     "p&l_usd",
     "p&l_pct",
-    "days_held",     # renamed from "bars_held" — Variant C is daily timeframe
+    "bars_held",
 ]
 
 
@@ -62,15 +60,16 @@ class TradeLogger:
         Args:
             trade: Trade dict with required fields:
                 - timestamp: ISO format datetime
-                - symbol: Trading pair (e.g., BTCUSD)
-                - side: "LONG" (Variant C is long-only)
-                - entry_price: Entry fill price (Sunday)
-                - sl_price: Stop loss price (entry × 0.97 for Variant C)
-                - exit_type: "MONDAY_EXIT" or "SL_HIT"
-                - exit_price: Exit fill price
-                - p&l_usd: Profit/loss in USD
+                - symbol: Trading pair (e.g., ETHUSDT)
+                - side: LONG or SHORT
+                - entry_price: Entry price
+                - sl: Stop loss price
+                - tp: Take profit price
+                - exit_type: HARD_STOP, SOFT_STOP, TAKE_PROFIT, TIMEOUT
+                - exit_price: Exit price
+                - p&l_usd: Profit/loss in USDT
                 - p&l_pct: Profit/loss percentage
-                - days_held: Number of daily candles held (typically 1)
+                - bars_held: Number of candles held (optional)
                 
         Returns:
             True if logged successfully, False otherwise
@@ -79,7 +78,7 @@ class TradeLogger:
             # Validate required fields
             required_fields = [
                 "timestamp", "symbol", "side", "entry_price",
-                "sl_price", "exit_type", "exit_price",
+                "sl", "tp", "exit_type", "exit_price",
                 "p&l_usd", "p&l_pct"
             ]
             for field in required_fields:
@@ -93,12 +92,13 @@ class TradeLogger:
                 "symbol": trade["symbol"],
                 "side": trade["side"],
                 "entry_price": round(trade["entry_price"], 2),
-                "sl_price": round(trade["sl_price"], 2),
+                "sl": round(trade["sl"], 2),
+                "tp": round(trade["tp"], 2),
                 "exit_type": trade["exit_type"],
                 "exit_price": round(trade["exit_price"], 2),
                 "p&l_usd": round(trade["p&l_usd"], 2),
                 "p&l_pct": round(trade["p&l_pct"], 4),
-                "days_held": trade.get("days_held", 0),
+                "bars_held": trade.get("bars_held", 0),
             }
             
             # Append to CSV
@@ -108,8 +108,7 @@ class TradeLogger:
             
             logger.info(
                 f"✓ Trade logged: {row['side']} {row['symbol']} "
-                f"@ {row['entry_price']} → {row['exit_price']} "
-                f"({row['exit_type']}), P&L: ${row['p&l_usd']} ({row['p&l_pct']}%)"
+                f"@ {row['entry_price']}, P&L: ${row['p&l_usd']} ({row['p&l_pct']}%)"
             )
             return True
         
@@ -140,11 +139,12 @@ class TradeLogger:
                     
                     # Convert numeric fields
                     row["entry_price"] = float(row["entry_price"])
-                    row["sl_price"] = float(row["sl_price"])
+                    row["sl"] = float(row["sl"])
+                    row["tp"] = float(row["tp"])
                     row["exit_price"] = float(row["exit_price"])
                     row["p&l_usd"] = float(row["p&l_usd"])
                     row["p&l_pct"] = float(row["p&l_pct"])
-                    row["days_held"] = int(row["days_held"])
+                    row["bars_held"] = int(row["bars_held"])
                     
                     trades.append(row)
             
@@ -157,17 +157,13 @@ class TradeLogger:
     
     def get_stats(self, symbol: str = None) -> Dict:
         """
-        Calculate trade statistics. Used for live-vs-backtest comparison
-        and the 30-trade review gate.
+        Calculate trade statistics.
         
         Args:
             symbol: Optional filter by symbol
             
         Returns:
             Dict with stats: win_rate, profit_factor, total_pnl, etc.
-            For Variant C 30-trade gate, watch:
-                - profit_factor vs backtest 1.207 (within 0.2 = aligned)
-                - win_rate vs backtest 50.41% (±5pp acceptable)
         """
         trades = self.read_trades(symbol)
         if not trades:

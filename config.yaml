@@ -1,4 +1,5 @@
 # Proppa Kraken Crypto Bot Configuration
+# Strategy: Variant C — Calendar Sunday→Monday BTC Weekend Hold
 # All sensitive values are loaded from environment variables
 
 kraken:
@@ -9,34 +10,53 @@ kraken:
   # Use testnet (false = live trading)
   sandbox: false
 
+strategy:
+  # Strategy identifier — Variant C calendar weekend hold
+  name: "variant_c_calendar"
+  
+  # Stop loss: 3% from entry price (hard, exchange-side)
+  sl_pct: 0.03
+  
+  # Variant C has no take profit — exit on Monday close UTC or SL hit
+  take_profit_enabled: false
+  
+  # Calendar gating (documentation only — TV-side dayofweek logic is authoritative)
+  entry_day_utc: "sunday"
+  exit_day_utc: "monday"
+  hold_period_days: 1
+
 trading:
-  # Risk per trade: 1% of account equity (HARD CAP)
+  # Risk per trade: 0.5% of account equity for first 30 live trades
+  # Scale to 0.01 (1%) after 30 trades if aligned with backtest expectations
   risk_per_trade: 0.005
   
   # Max trades per day (UTC midnight reset)
-  max_daily_trades: 2
+  # Variant C trades once per week — cap at 1 per day for safety
+  max_daily_trades: 1
   
-  # Max consecutive losses before 24H pause
+  # Layer 1: Informational Telegram alert at this many consecutive losses
+  # Within normal variance for 50% WR strategy (~12% probability) — no action taken
+  consecutive_losses_warning: 3
+  
+  # Layer 2: Manual-resume circuit break at this many consecutive losses
+  # ~3% probability event — bot pauses, manual /resume required
   max_consecutive_losses: 5
   
   # Max daily loss % before stopping (-3% = -0.03)
   max_daily_loss: -0.03
   
-  # Drawdown % threshold to reduce position sizing to 0.5% (15% = 0.15)
+  # Drawdown % threshold to reduce position sizing to half (15% = 0.15)
   max_drawdown: 0.15
   
   # Drawdown % hard stop (20% = 0.20, halt all trading)
   max_drawdown_hard_stop: 0.20
 
 assets:
-  # Trading symbols (enable/disable per symbol)
-  - symbol: ETHUSDT
+  # Variant C is BTC-only per multi-pair backtest results
+  # ETH and SOL failed gates on Variant C — see migration spec §11
+  - symbol: BTCUSD
     leverage: 1
     enabled: true
-  
-  # - symbol: BTCUSDT
-  #   leverage: 1
-  #   enabled: false
 
 telegram:
   # Telegram bot token (load from env: TELEGRAM_BOT_TOKEN)

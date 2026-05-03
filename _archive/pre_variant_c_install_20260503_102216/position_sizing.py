@@ -1,29 +1,24 @@
 """
-Position Sizing Calculator — Variant C Calendar Strategy
-Implements long-only risk-based position sizing with fixed % stop loss distance.
-
-Variant C runs at 0.5% risk per trade for first 30 live trades, scaling to 1.0%
-after backtest-alignment is confirmed. SL is a fixed 3% from entry (config-driven),
-not a dynamic indicator value.
+Position Sizing Calculator
+Implements 1% risk per trade with dynamic stop loss distance.
 """
 
 import logging
-from typing import Dict
+from typing import Dict, Tuple
 from decimal import Decimal, ROUND_DOWN
 
 logger = logging.getLogger(__name__)
 
 
 class PositionSizer:
-    """Calculate position size based on configurable risk % rule. Long-only."""
+    """Calculate position size based on 1% risk rule."""
     
-    def __init__(self, risk_per_trade: float = 0.005):
+    def __init__(self, risk_per_trade: float = 0.01):
         """
         Initialize position sizer.
         
         Args:
-            risk_per_trade: Risk percentage per trade (default 0.005 = 0.5%)
-                            Variant C uses 0.5% for first 30 trades, 1.0% after.
+            risk_per_trade: Risk percentage per trade (default 0.01 = 1%)
         """
         self.risk_per_trade = risk_per_trade
     
@@ -37,17 +32,13 @@ class PositionSizer:
         Formula:
             quantity = (account_equity * risk_per_trade) / (entry_price - stop_loss)
         
-        For Variant C (long-only, BTC/USD):
-            entry_price > stop_loss always (SL is below entry by 3%)
-            stop_loss = entry_price * (1 - 0.03)
-        
         Args:
-            account_equity: Account balance in USD
-            entry_price: Entry price (Sunday close)
-            stop_loss: Stop loss price (entry × 0.97 for Variant C)
+            account_equity: Account balance in USDT
+            entry_price: Entry price
+            stop_loss: Stop loss price
             
         Returns:
-            Dict with quantity, risk_amount, sl_distance, entry_price, stop_loss, risk_percentage
+            Dict with quantity, risk_amount, sl_distance
         """
         try:
             # Validate inputs
@@ -58,26 +49,20 @@ class PositionSizer:
             if stop_loss <= 0:
                 raise ValueError(f"Invalid stop_loss: {stop_loss}")
             
-            # Variant C is long-only: SL must be below entry
-            if stop_loss >= entry_price:
-                raise ValueError(
-                    f"Variant C is long-only: stop_loss ({stop_loss}) "
-                    f"must be below entry_price ({entry_price})"
-                )
-            
-            # Calculate SL distance
-            sl_distance = entry_price - stop_loss
+            # Calculate SL distance (absolute)
+            sl_distance = abs(entry_price - stop_loss)
             if sl_distance == 0:
                 raise ValueError("Stop loss cannot equal entry price")
             
-            # Calculate risk amount (config-driven %, HARD CAP)
+            # Calculate risk amount (1% of equity, HARD CAP)
             risk_amount = account_equity * self.risk_per_trade
             
-            # Calculate position size: qty = risk_amount / sl_distance
+            # Calculate position size
+            # qty = risk_amount / sl_distance
             quantity = risk_amount / sl_distance
             
-            # Round down to avoid over-leveraging.
-            # 0.0001 BTC precision matches Kraken's BTC minimum order size.
+            # Round down to avoid over-leveraging
+            # For USDT pairs, typically 2-4 decimal places
             quantity = float(Decimal(str(quantity)).quantize(
                 Decimal('0.0001'), 
                 rounding=ROUND_DOWN
@@ -96,9 +81,8 @@ class PositionSizer:
             }
             
             logger.info(
-                f"Position sized: {quantity} BTC @ {entry_price}, "
-                f"SL: {stop_loss}, Risk: ${risk_amount:.2f} "
-                f"({self.risk_per_trade*100:.2f}%)"
+                f"Position sized: {quantity} @ {entry_price}, "
+                f"SL: {stop_loss}, Risk: ${risk_amount:.2f} (1%)"
             )
             return result
         
@@ -106,37 +90,53 @@ class PositionSizer:
             logger.error(f"Position sizing error: {str(e)}")
             raise
     
+    def calculate_take_profit(self, 
+                             entry_price: float, 
+                             stop_loss: float) -> float:
+        """
+        Calculate take profit target: entry + (SL_distance × 1.5)
+        
+        This creates a favorable risk/reward ratio of 1:1.5
+        """
+        sl_distance = abs(entry_price - stop_loss)
+        
+        # For LONG trades: TP = entry + (sl_distance * 1.5)
+        # For SHORT trades: TP = entry - (sl_distance * 1.5)
+        if entry_price > stop_loss:  # LONG
+            take_profit = entry_price + (sl_distance * 1.5)
+        else:  # SHORT
+            take_profit = entry_price - (sl_distance * 1.5)
+        
+        return round(take_profit, 2)
+    
     def calculate_pnl(self, 
                      entry_price: float, 
                      exit_price: float, 
                      quantity: float,
-                     side: str = "LONG") -> Dict:
+                     side: str) -> Dict:
         """
         Calculate P&L for a closed trade.
-        
-        Variant C is long-only — only LONG side is supported.
         
         Args:
             entry_price: Entry price
             exit_price: Exit price
-            quantity: Position size in BTC
-            side: Must be "LONG" (Variant C is long-only)
+            quantity: Position size in contracts
+            side: "LONG" or "SHORT"
             
         Returns:
-            Dict with pnl_usd, pnl_pct, entry_price, exit_price, quantity
-            
-        Raises:
-            ValueError: if side != "LONG"
+            Dict with pnl_usd, pnl_pct
         """
         try:
-            if side != "LONG":
-                raise ValueError(
-                    f"Variant C is long-only; got side={side}. "
-                    f"Strategy spec lock: spot 1x, no shorts."
-                )
+            if side == "LONG":
+                pnl_usd = (exit_price - entry_price) * quantity
+            elif side == "SHORT":
+                pnl_usd = (entry_price - exit_price) * quantity
+            else:
+                raise ValueError(f"Invalid side: {side}")
             
-            pnl_usd = (exit_price - entry_price) * quantity
             pnl_pct = ((exit_price - entry_price) / entry_price) * 100
+            if side == "SHORT":
+                pnl_pct = -pnl_pct
             
             result = {
                 "pnl_usd": round(pnl_usd, 2),
