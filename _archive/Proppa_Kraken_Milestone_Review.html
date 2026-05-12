@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Proppa Kraken Crypto Bot — Milestone Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,700;9..144,900&family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet" />
+<style>
+  /* ============== DESIGN TOKENS ============== */
+  :root {
+    --bg-deep: #0a0e0c;
+    --bg-panel: #11161311;
+    --bg-panel-solid: #0e1411;
+    --border-faint: #1f2a23;
+    --border-mid: #2a3a30;
+    --border-bright: #3d5a48;
+
+    --ink-primary: #d8e8dc;
+    --ink-secondary: #889c8e;
+    --ink-tertiary: #4a5e51;
+    --ink-dim: #2e3d34;
+
+    --accent-green: #4ade80;
+    --accent-green-dim: #4ade8033;
+    --accent-amber: #f5c542;
+    --accent-amber-dim: #f5c54222;
+    --accent-red: #ef4444;
+    --accent-red-dim: #ef444422;
+    --accent-cyan: #67e8f9;
+    --accent-cyan-dim: #67e8f922;
+
+    --grid-line: #15201922;
+
+    --serif: 'Fraunces', 'Times New Roman', serif;
+    --mono: 'JetBrains Mono', 'Menlo', 'Courier New', monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    background: var(--bg-deep);
+    color: var(--ink-primary);
+    font-family: var(--mono);
+    font-size: 14px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ============== ATMOSPHERIC BACKGROUND ============== */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      radial-gradient(circle at 20% 10%, #0d2018 0%, transparent 40%),
+      radial-gradient(circle at 90% 80%, #0a1c14 0%, transparent 50%),
+      linear-gradient(180deg, #0a0e0c 0%, #080b09 100%);
+    z-index: -2;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 64px 64px;
+    z-index: -1;
+    opacity: 0.4;
+    pointer-events: none;
+  }
+
+  /* ============== SHELL ============== */
+  .shell {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 48px 40px 80px;
+  }
+
+  /* ============== TOP BAR ============== */
+  .topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border-faint);
+    margin-bottom: 48px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-tertiary);
+  }
+  .topbar .left { display: flex; gap: 24px; align-items: center; }
+  .topbar .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-green);
+    box-shadow: 0 0 12px var(--accent-green);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.85); }
+  }
+  .topbar .right { display: flex; gap: 32px; }
+  .topbar code { color: var(--ink-secondary); }
+
+  /* ============== HEADER ============== */
+  .hero {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: end;
+    gap: 32px;
+    margin-bottom: 56px;
+    padding-bottom: 40px;
+    border-bottom: 1px solid var(--border-faint);
+  }
+
+  .hero h1 {
+    font-family: var(--serif);
+    font-weight: 900;
+    font-size: clamp(48px, 7vw, 96px);
+    line-height: 0.95;
+    letter-spacing: -0.03em;
+    color: var(--ink-primary);
+    font-style: italic;
+  }
+
+  .hero h1 .accent {
+    color: var(--accent-green);
+    font-style: normal;
+    font-weight: 500;
+  }
+
+  .hero .subtitle {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--ink-secondary);
+    margin-top: 24px;
+    letter-spacing: 0.02em;
+    max-width: 520px;
+  }
+
+  .hero .badge {
+    border: 1px solid var(--border-bright);
+    padding: 16px 20px;
+    background: var(--bg-panel-solid);
+    text-align: right;
+    min-width: 220px;
+  }
+  .hero .badge .label {
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--ink-tertiary);
+    margin-bottom: 8px;
+  }
+  .hero .badge .value {
+    font-family: var(--serif);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--accent-green);
+    line-height: 1;
+  }
+
+  /* ============== KPI ROW ============== */
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border-faint);
+    border: 1px solid var(--border-faint);
+    margin-bottom: 56px;
+  }
+
+  .kpi {
+    background: var(--bg-panel-solid);
+    padding: 24px 24px 28px;
+    position: relative;
+    transition: background 0.3s ease;
+  }
+  .kpi:hover { background: #131a16; }
+
+  .kpi .kpi-label {
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--ink-tertiary);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .kpi .kpi-label::before {
+    content: '◆';
+    color: var(--accent-green);
+    font-size: 8px;
+  }
+
+  .kpi .kpi-value {
+    font-family: var(--serif);
+    font-size: 36px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--ink-primary);
+    font-feature-settings: 'tnum' 1;
+  }
+  .kpi .kpi-meta {
+    font-size: 11px;
+    color: var(--ink-secondary);
+    margin-top: 12px;
+    letter-spacing: 0.02em;
+  }
+  .kpi .kpi-meta .pos { color: var(--accent-green); }
+  .kpi .kpi-meta .neg { color: var(--accent-red); }
+
+  /* ============== SECTION TITLE ============== */
+  .section {
+    margin-bottom: 72px;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: baseline;
+    gap: 24px;
+    margin-bottom: 32px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border-faint);
+  }
+  .section-num {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent-green);
+    letter-spacing: 0.1em;
+  }
+  .section-title {
+    font-family: var(--serif);
+    font-size: 32px;
+    font-weight: 500;
+    font-style: italic;
+    color: var(--ink-primary);
+    letter-spacing: -0.01em;
+  }
+  .section-tag {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-tertiary);
+    margin-left: auto;
+  }
+
+  /* ============== TIMELINE / SESSION CARDS ============== */
+  .timeline {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+
+  .session-card {
+    background: var(--bg-panel-solid);
+    border: 1px solid var(--border-faint);
+    padding: 24px 20px;
+    position: relative;
+    transition: all 0.3s ease;
+  }
+  .session-card:hover {
+    border-color: var(--border-bright);
+    transform: translateY(-2px);
+  }
+
+  .session-card .session-num {
+    font-family: var(--serif);
+    font-size: 56px;
+    font-weight: 900;
+    font-style: italic;
+    line-height: 1;
+    color: var(--accent-green);
+    opacity: 0.18;
+    position: absolute;
+    top: 12px;
+    right: 16px;
+  }
+  .session-card .session-tag {
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--ink-tertiary);
+    margin-bottom: 12px;
+  }
+  .session-card .session-title {
+    font-family: var(--serif);
+    font-size: 18px;
+    font-weight: 500;
+    font-style: italic;
+    color: var(--ink-primary);
+    margin-bottom: 14px;
+    line-height: 1.2;
+  }
+  .session-card .session-meta {
+    font-size: 11px;
+    color: var(--ink-secondary);
+    line-height: 1.6;
+    border-top: 1px solid var(--border-faint);
+    padding-top: 12px;
+    margin-top: 12px;
+  }
+  .session-card .session-meta .stat {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  .session-card .session-meta .stat span:last-child {
+    color: var(--ink-primary);
+    font-weight: 500;
+  }
+
+  /* ============== ARCHITECTURE DIAGRAM ============== */
+  .arch-frame {
+    background: var(--bg-panel-solid);
+    border: 1px solid var(--border-faint);
+    padding: 40px 32px;
+    overflow: hidden;
+  }
+  .arch-svg {
+    width: 100%;
+    height: auto;
+  }
+  .arch-svg .node-bg {
+    fill: var(--bg-deep);
+    stroke: var(--border-bright);
+    stroke-width: 1;
+  }
+  .arch-svg .node-bg.green { stroke: var(--accent-green); }
+  .arch-svg .node-bg.amber { stroke: var(--accent-amber); }
+  .arch-svg .node-bg.cyan { stroke: var(--accent-cyan); }
+  .arch-svg text.label {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    fill: var(--ink-primary);
+  }
+  .arch-svg text.sublabel {
+    font-family: var(--mono);
+    font-size: 9px;
+    fill: var(--ink-secondary);
+    letter-spacing: 0.05em;
+  }
+  .arch-svg .flow {
+    stroke: var(--border-bright);
+    stroke-width: 1.5;
+    fill: none;
+    stroke-dasharray: 4 4;
+  }
+  .arch-svg .flow-active {
+    stroke: var(--accent-green);
+    stroke-width: 2;
+    stroke-dasharray: 0;
+    filter: drop-shadow(0 0 4px var(--accent-green-dim));
+  }
+  .arch-svg .arrow-head { fill: var(--accent-green); }
+  .arch-svg .arrow-head-faint { fill: var(--border-bright); }
+
+  /* ============== PIPELINE STATUS ============== */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 32px;
+  }
+  @media (max-width: 900px) {
+    .two-col { grid-template-columns: 1fr; }
+    .timeline { grid-template-columns: repeat(2, 1fr); }
+    .kpi-row { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  .checklist {
+    background: var(--bg-panel-solid);
+    border: 1px solid var(--border-faint);
+    padding: 28px;
+  }
+  .checklist h3 {
+    font-family: var(--serif);
+    font-size: 18px;
+    font-style: italic;
+    font-weight: 500;
+    margin-bottom: 24px;
+    color: var(--ink-primary);
+    border-bottom: 1px solid var(--border-faint);
+    padding-bottom: 12px;
+  }
+  .checklist .item {
+    display: grid;
+    grid-template-columns: 24px 1fr auto;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px dashed var(--border-faint);
+    align-items: center;
+    font-size: 12px;
+  }
+  .checklist .item:last-child { border-bottom: none; }
+  .checklist .check {
+    color: var(--accent-green);
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .checklist .check.pending { color: var(--accent-amber); }
+  .checklist .item-text { color: var(--ink-primary); }
+  .checklist .item-meta {
+    color: var(--ink-tertiary);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* ============== BUGS LEDGER ============== */
+  .ledger {
+    background: var(--bg-panel-solid);
+    border: 1px solid var(--border-faint);
+    padding: 0;
+  }
+  .ledger-row {
+    display: grid;
+    grid-template-columns: 60px 1fr 100px 80px;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border-faint);
+    font-size: 11px;
+    align-items: center;
+  }
+  .ledger-row.header {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-tertiary);
+    background: #0d1311;
+    border-bottom: 1px solid var(--border-bright);
+  }
+  .ledger-row:last-child { border-bottom: none; }
+  .ledger-row .session {
+    font-family: var(--serif);
+    font-size: 14px;
+    font-weight: 700;
+    font-style: italic;
+    color: var(--accent-green);
+  }
+  .ledger-row .desc {
+    color: var(--ink-primary);
+    font-size: 12px;
+  }
+  .ledger-row .desc .muted {
+    color: var(--ink-secondary);
+    font-size: 10px;
+    margin-top: 2px;
+  }
+  .ledger-row .count {
+    color: var(--accent-amber);
+    text-align: center;
+    font-weight: 500;
+  }
+  .ledger-row .fees {
+    text-align: right;
+    color: var(--ink-primary);
+    font-feature-settings: 'tnum' 1;
+  }
+
+  /* ============== ALERTS GRID ============== */
+  .alerts-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .alert-card {
+    background: var(--bg-panel-solid);
+    border: 1px solid var(--border-faint);
+    padding: 18px 20px;
+    position: relative;
+  }
+  .alert-card .status-dot {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent-green);
+    box-shadow: 0 0 8px var(--accent-green);
+  }
+  .alert-card .alert-name {
+    font-family: var(--serif);
+    font-size: 15px;
+    font-weight: 500;
+    font-style: italic;
+    color: var(--ink-primary);
+    margin-bottom: 4px;
+  }
+  .alert-card .alert-action {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--ink-tertiary);
+    margin-bottom: 12px;
+  }
+  .alert-card .alert-payload {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-secondary);
+    background: #0a0d0b;
+    padding: 8px 10px;
+    border: 1px solid var(--border-faint);
+    border-left: 2px solid var(--accent-green);
+    overflow-x: auto;
+    white-space: nowrap;
+    line-height: 1.4;
+  }
+  @media (max-width: 900px) {
+    .alerts-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ============== CONFIG TABLE ============== */
+  .config-table {
+    background: var(--bg-panel-solid);
+    border: 1px solid var(--border-faint);
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .config-table th, .config-table td {
+    text-align: left;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border-faint);
+    font-size: 12px;
+  }
+  .config-table th {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-tertiary);
+    font-weight: 500;
+    background: #0d1311;
+    border-bottom: 1px solid var(--border-bright);
+  }
+  .config-table td.label { color: var(--ink-secondary); }
+  .config-table td.value {
+    color: var(--ink-primary);
+    font-feature-settings: 'tnum' 1;
+  }
+  .config-table td .tag {
+    display: inline-block;
+    font-size: 9px;
+    padding: 2px 8px;
+    border: 1px solid var(--accent-green);
+    color: var(--accent-green);
+    letter-spacing: 0.1em;
+    margin-left: 8px;
+    border-radius: 2px;
+  }
+  .config-table tr:last-child td { border-bottom: none; }
+
+  /* ============== CALLOUT ============== */
+  .callout {
+    background: linear-gradient(135deg, #0d1c14 0%, #0a1410 100%);
+    border: 1px solid var(--border-bright);
+    border-left: 3px solid var(--accent-green);
+    padding: 32px 36px;
+    position: relative;
+    overflow: hidden;
+  }
+  .callout::before {
+    content: '"';
+    position: absolute;
+    top: -40px;
+    right: 24px;
+    font-family: var(--serif);
+    font-size: 220px;
+    color: var(--accent-green);
+    opacity: 0.08;
+    line-height: 1;
+  }
+  .callout .label {
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--accent-green);
+    margin-bottom: 16px;
+  }
+  .callout .text {
+    font-family: var(--serif);
+    font-size: 22px;
+    font-style: italic;
+    line-height: 1.4;
+    color: var(--ink-primary);
+    max-width: 760px;
+    font-weight: 400;
+  }
+  .callout .text strong {
+    color: var(--accent-green);
+    font-weight: 500;
+  }
+
+  /* ============== FOOTER ============== */
+  .footer {
+    margin-top: 80px;
+    padding-top: 32px;
+    border-top: 1px solid var(--border-faint);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--ink-tertiary);
+    letter-spacing: 0.05em;
+  }
+  .footer .ascii {
+    font-size: 9px;
+    color: var(--ink-dim);
+    line-height: 1.2;
+    white-space: pre;
+  }
+
+  /* ============== ENTRANCE ANIMATION ============== */
+  .reveal {
+    opacity: 0;
+    transform: translateY(12px);
+    animation: reveal 0.7s ease forwards;
+  }
+  @keyframes reveal {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .topbar { animation-delay: 0s; }
+  .hero { animation: reveal 0.7s ease 0.05s forwards; opacity: 0; }
+  .kpi-row { animation: reveal 0.7s ease 0.15s forwards; opacity: 0; }
+  .section:nth-of-type(2) { animation: reveal 0.7s ease 0.25s forwards; opacity: 0; }
+  .section:nth-of-type(3) { animation: reveal 0.7s ease 0.35s forwards; opacity: 0; }
+  .section:nth-of-type(4) { animation: reveal 0.7s ease 0.45s forwards; opacity: 0; }
+  .section:nth-of-type(5) { animation: reveal 0.7s ease 0.55s forwards; opacity: 0; }
+  .section:nth-of-type(6) { animation: reveal 0.7s ease 0.65s forwards; opacity: 0; }
+  .section:nth-of-type(7) { animation: reveal 0.7s ease 0.75s forwards; opacity: 0; }
+
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- TOP BAR -->
+  <div class="topbar reveal">
+    <div class="left">
+      <span class="dot"></span>
+      <span>System Active</span>
+      <code style="color: var(--ink-tertiary);">·</code>
+      <span>Railway · web-production-504463</span>
+    </div>
+    <div class="right">
+      <span>Stamp <code>2026-04-28</code></span>
+      <span>Version <code>session-05 / final</code></span>
+    </div>
+  </div>
+
+  <!-- HERO -->
+  <header class="hero">
+    <div>
+      <h1>Proppa Kraken<br/><span class="accent">— hardened.</span></h1>
+      <p class="subtitle">A five-session engineering log of taking a Supertrend + RSI signal-driven bot from a curl-tested prototype to a fully autonomous TradingView-driven trading system — and then making it production-resilient. Live on Kraken spot. Real money. Real signals. Real Telegram alerts. First organic signal exposed three latent failure modes in session 5 — all three patched the same day.</p>
+    </div>
+    <div class="badge">
+      <div class="label">Milestone</div>
+      <div class="value">Production Hardened</div>
+    </div>
+  </header>
+
+  <!-- KPI ROW -->
+  <div class="kpi-row">
+    <div class="kpi">
+      <div class="kpi-label">Account Balance</div>
+      <div class="kpi-value">$160.81</div>
+      <div class="kpi-meta">USD spot · was <strong style="color:var(--ink-primary)">$167.40</strong> · <span class="neg">−$6.59</span> total dev cost (fees + spread, 3.9%)</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Bugs Squashed</div>
+      <div class="kpi-value">14</div>
+      <div class="kpi-meta">across 4 sessions · session 5 added resilience, no new bugs · all systemic-glue pattern</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Round Trips</div>
+      <div class="kpi-value">10.5</div>
+      <div class="kpi-meta">10 test fires · 1 organic SHORT (s5, no-op spot mode) · awaiting first profitable signal</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Active Alerts</div>
+      <div class="kpi-value">6</div>
+      <div class="kpi-meta">TV → Railway · Once Per Bar Close · ETH/USD 4H Kraken · async webhook (s5)</div>
+    </div>
+  </div>
+
+  <!-- ARCHITECTURE -->
+  <section class="section">
+    <div class="section-header">
+      <div class="section-num">/01</div>
+      <h2 class="section-title">System Architecture</h2>
+      <div class="section-tag">end-to-end pipeline</div>
+    </div>
+    <div class="arch-frame">
+      <svg class="arch-svg" viewBox="0 0 1200 360" xmlns="http://www.w3.org/2000/svg">
+        <!-- definitions -->
+        <defs>
+          <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+            <polygon points="0 0, 10 3, 0 6" class="arrow-head"/>
+          </marker>
+          <marker id="arrow-faint" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+            <polygon points="0 0, 10 3, 0 6" class="arrow-head-faint"/>
+          </marker>
+        </defs>
+
+        <!-- Row labels -->
+        <text x="20" y="28" class="sublabel" style="letter-spacing:0.15em">SIGNAL SOURCE</text>
+        <text x="20" y="148" class="sublabel" style="letter-spacing:0.15em">PROCESSING</text>
+        <text x="20" y="268" class="sublabel" style="letter-spacing:0.15em">EXECUTION + NOTIFY</text>
+
+        <!-- Top: TradingView -->
+        <g>
+          <rect x="60" y="50" width="220" height="70" class="node-bg cyan" rx="2"/>
+          <text x="80" y="76" class="label">TradingView</text>
+          <text x="80" y="96" class="sublabel">Pine v2-3 · Supertrend(10,3)</text>
+          <text x="80" y="110" class="sublabel">RSI(14) · 4H · 6 alertconditions</text>
+        </g>
+
+        <!-- Vertical arrow down to webhook -->
+        <line x1="170" y1="120" x2="170" y2="170" class="flow flow-active" marker-end="url(#arrow)"/>
+        <text x="180" y="148" class="sublabel" fill="var(--accent-green)">JSON webhook</text>
+
+        <!-- Middle: Railway / main.py -->
+        <g>
+          <rect x="60" y="170" width="220" height="80" class="node-bg green" rx="2"/>
+          <text x="80" y="196" class="label">Railway · Flask</text>
+          <text x="80" y="216" class="sublabel">main.py webhook handler</text>
+          <text x="80" y="230" class="sublabel">signal_parser.parse()</text>
+          <text x="80" y="244" class="sublabel" fill="var(--accent-amber)">+ async (s5) + retry (s5)</text>
+        </g>
+
+        <!-- Branch arrow right to Kraken -->
+        <line x1="280" y1="210" x2="380" y2="210" class="flow flow-active" marker-end="url(#arrow)"/>
+
+        <!-- Right: Kraken -->
+        <g>
+          <rect x="380" y="170" width="220" height="80" class="node-bg amber" rx="2"/>
+          <text x="400" y="196" class="label">Kraken Spot</text>
+          <text x="400" y="216" class="sublabel">CCXT 4.5.46 · authenticated</text>
+          <text x="400" y="230" class="sublabel">market buy / sell · stop loss</text>
+          <text x="400" y="244" class="sublabel">long-only · ETH/USD</text>
+        </g>
+
+        <!-- Down arrow from main to Position State -->
+        <line x1="170" y1="250" x2="170" y2="290" class="flow" marker-end="url(#arrow-faint)"/>
+        <g>
+          <rect x="60" y="290" width="220" height="48" class="node-bg" rx="2"/>
+          <text x="80" y="312" class="label" style="font-size:11px">positions_state.json</text>
+          <text x="80" y="328" class="sublabel">+ trades.csv (TradeLogger)</text>
+        </g>
+
+        <!-- Down arrow from Kraken back-confirm to telegram dispatch -->
+        <line x1="490" y1="250" x2="490" y2="290" class="flow flow-active" marker-end="url(#arrow)"/>
+
+        <g>
+          <rect x="380" y="290" width="220" height="48" class="node-bg" rx="2"/>
+          <text x="400" y="312" class="label" style="font-size:11px">RiskManager</text>
+          <text x="400" y="328" class="sublabel">gates · drawdown · daily limit</text>
+        </g>
+
+        <!-- Right side: Telegram (top right area) -->
+        <g>
+          <rect x="700" y="170" width="220" height="80" class="node-bg green" rx="2"/>
+          <text x="720" y="196" class="label">Telegram Alerts</text>
+          <text x="720" y="216" class="sublabel">api.telegram.org · bot8720…</text>
+          <text x="720" y="230" class="sublabel">🟢 entry · 🔴 exit · 📈 P&amp;L</text>
+          <text x="720" y="244" class="sublabel" fill="var(--accent-amber)">token rotated 2× (s3-ext, s4)</text>
+        </g>
+
+        <!-- Arrow main to Telegram -->
+        <line x1="280" y1="200" x2="700" y2="200" class="flow flow-active" marker-end="url(#arrow)"/>
+
+        <!-- Phone -->
+        <g>
+          <rect x="700" y="290" width="220" height="48" class="node-bg" rx="2"/>
+          <text x="720" y="312" class="label" style="font-size:11px">Ash's iPhone</text>
+          <text x="720" y="328" class="sublabel">push notifications · live confirmed</text>
+        </g>
+        <line x1="810" y1="250" x2="810" y2="290" class="flow flow-active" marker-end="url(#arrow)"/>
+
+        <!-- Ash control panel (top right) -->
+        <g>
+          <rect x="940" y="50" width="220" height="288" class="node-bg" rx="2"/>
+          <text x="960" y="76" class="label">Operator</text>
+          <text x="960" y="96" class="sublabel" style="letter-spacing:0.15em">— ASH —</text>
+
+          <text x="960" y="130" class="sublabel">monitors</text>
+          <text x="960" y="148" class="label" style="font-size:11px">▸ Railway logs</text>
+          <text x="960" y="166" class="label" style="font-size:11px">▸ Kraken UI</text>
+          <text x="960" y="184" class="label" style="font-size:11px">▸ Telegram chat</text>
+          <text x="960" y="202" class="label" style="font-size:11px">▸ TV chart + alerts</text>
+
+          <text x="960" y="234" class="sublabel">controls</text>
+          <text x="960" y="252" class="label" style="font-size:11px">▸ config.yaml</text>
+          <text x="960" y="270" class="label" style="font-size:11px">▸ Pine script</text>
+          <text x="960" y="288" class="label" style="font-size:11px">▸ git push → Railway</text>
+
+          <text x="960" y="324" class="sublabel" fill="var(--accent-green)">↺ feedback loop</text>
+        </g>
+      </svg>
+    </div>
+  </section>
+
+  <!-- SESSION TIMELINE -->
+  <section class="section">
+    <div class="section-header">
+      <div class="section-num">/02</div>
+      <h2 class="section-title">Build Sessions</h2>
+      <div class="section-tag">five sessions · ~17 hours</div>
+    </div>
+    <div class="timeline">
+      <div class="session-card">
+        <div class="session-num">01</div>
+        <div class="session-tag">Foundation</div>
+        <div class="session-title">Bring the bot online</div>
+        <div class="session-meta">
+          <div class="stat"><span>Bugs fixed</span><span>5</span></div>
+          <div class="stat"><span>Round trips</span><span>3</span></div>
+          <div class="stat"><span>Cost</span><span>$0.92</span></div>
+        </div>
+      </div>
+      <div class="session-card">
+        <div class="session-num">02</div>
+        <div class="session-tag">Hardening</div>
+        <div class="session-title">Cancel mystery, plumbing</div>
+        <div class="session-meta">
+          <div class="stat"><span>Bugs fixed</span><span>5</span></div>
+          <div class="stat"><span>Round trips</span><span>1.5</span></div>
+          <div class="stat"><span>Cost</span><span>$0.62</span></div>
+        </div>
+      </div>
+      <div class="session-card">
+        <div class="session-num">03</div>
+        <div class="session-tag">Telegram</div>
+        <div class="session-title">Pipeline + alerts confirmed</div>
+        <div class="session-meta">
+          <div class="stat"><span>Bugs fixed</span><span>3</span></div>
+          <div class="stat"><span>Round trips</span><span>3</span></div>
+          <div class="stat"><span>Cost</span><span>$1.39</span></div>
+        </div>
+      </div>
+      <div class="session-card">
+        <div class="session-num">04</div>
+        <div class="session-tag">TradingView</div>
+        <div class="session-title">Autonomous integration</div>
+        <div class="session-meta">
+          <div class="stat"><span>Bugs fixed</span><span>1</span></div>
+          <div class="stat"><span>Round trips</span><span>2</span></div>
+          <div class="stat"><span>Cost</span><span>$1.41</span></div>
+        </div>
+      </div>
+      <div class="session-card">
+        <div class="session-num">05</div>
+        <div class="session-tag">Resilience · today</div>
+        <div class="session-title">Retry + async + error alerts</div>
+        <div class="session-meta">
+          <div class="stat"><span>Patches shipped</span><span>2</span></div>
+          <div class="stat"><span>Round trips</span><span>1</span></div>
+          <div class="stat"><span>Cost</span><span>$0.36</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PIPELINE STATUS + BUG LEDGER -->
+  <section class="section">
+    <div class="section-header">
+      <div class="section-num">/03</div>
+      <h2 class="section-title">Verification Status</h2>
+      <div class="section-tag">what's proven · what's pending</div>
+    </div>
+    <div class="two-col">
+      <div class="checklist">
+        <h3>Verified live · real Kraken · real money</h3>
+        <div class="item"><span class="check">✓</span><span class="item-text">Webhook + signal parser</span><span class="item-meta">s1–s4</span></div>
+        <div class="item"><span class="check">✓</span><span class="item-text">Kraken authenticated · trading scope</span><span class="item-meta">s1</span></div>
+        <div class="item"><span class="check">✓</span><span class="item-text">Position sizer · risk-derived quantity</span><span class="item-meta">s1</span></div>
+        <div class="item"><span class="check">✓</span><span class="item-text">Market entry · stop-loss placement</span><span class="item-meta">s1–s4</span></div>
+        <div class="item"><span class="check">✓</span><span class="item-text">SL cancel · market exit · P&amp;L calc</span><span class="item-meta">s2–s4</span></div>
+        <div class="item"><span class="check">✓</span><span class="item-text">trades.csv written · positions_state synced</span><span class="item-meta">s3</span></div>
+        <div class="item"><span class="check">✓</span><span class="item-text">Telegram entry alert delivered to phone</span><span class="item-meta">s3-ext</span></div>
+        <div class="item"><span class="check">✓</span><span class="item-text">Telegram exit alert with P&amp;L emoji</span><span class="item-meta">s3-ext</span></div>
+        <div class="item"><span class="check">✓</span><span class="item-text">Pine v2-3 deployed · 6 alertconditions</span><span class="item-meta">s4</span></div>
+        <div class="item"><span class="check">✓</span><span class="item-text">TV alert → webhook → bot pipeline live</span><span class="item-meta">s4</span></div>
+        <div class="item"><span class="check">✓</span><span class="item-text">main.py glue-mismatch patched + tested</span><span class="item-meta">s4</span></div>
+        <div class="item"><span class="check">✓</span><span class="item-text">{{close}} / {{plot_0}} substitution under live signal</span><span class="item-meta">s5 (organic)</span></div>
+        <div class="item"><span class="check">✓</span><span class="item-text">Async webhook · 200 in ~50ms · TV timeout-proof</span><span class="item-meta">s5</span></div>
+        <div class="item"><span class="check">✓</span><span class="item-text">Retry-with-backoff on 5 hot-path Kraken calls</span><span class="item-meta">s5</span></div>
+        <div class="item"><span class="check">✓</span><span class="item-text">Telegram error alerts at 3 silent-failure spots</span><span class="item-meta">s5</span></div>
+        <div class="item"><span class="check pending">◐</span><span class="item-text">Retry / error-alert paths under real Kraken hiccup</span><span class="item-meta">awaiting in-wild</span></div>
+        <div class="item"><span class="check pending">◐</span><span class="item-text">"SL already triggered" recovery branch</span><span class="item-meta">awaiting</span></div>
+      </div>
+      <div class="ledger">
+        <div class="ledger-row header">
+          <div>Session</div>
+          <div>Round-trips</div>
+          <div>Bugs</div>
+          <div>Fees</div>
+        </div>
+        <div class="ledger-row">
+          <div class="session">01</div>
+          <div class="desc">Foundation<div class="muted">place_market_order, balance, gates</div></div>
+          <div class="count">5</div>
+          <div class="fees">$0.92</div>
+        </div>
+        <div class="ledger-row">
+          <div class="session">02</div>
+          <div class="desc">Hardening<div class="muted">cancel_order, normalize_symbol</div></div>
+          <div class="count">5</div>
+          <div class="fees">$0.62</div>
+        </div>
+        <div class="ledger-row">
+          <div class="session">03</div>
+          <div class="desc">Telegram<div class="muted">B1 · B2 · C bookkeeping fixes</div></div>
+          <div class="count">3</div>
+          <div class="fees">$1.39</div>
+        </div>
+        <div class="ledger-row">
+          <div class="session">04</div>
+          <div class="desc">TradingView<div class="muted">main.py parsed-dict glue patch</div></div>
+          <div class="count">1</div>
+          <div class="fees">$1.41</div>
+        </div>
+        <div class="ledger-row">
+          <div class="session">05</div>
+          <div class="desc">Resilience<div class="muted">retry-with-backoff + async webhook + error alerts</div></div>
+          <div class="count">0*</div>
+          <div class="fees">$0.36</div>
+        </div>
+        <div class="ledger-row" style="background:#0d1311;border-top:1px solid var(--border-bright)">
+          <div class="session" style="color:var(--accent-amber)">∑</div>
+          <div class="desc" style="color:var(--accent-green)">Per-session fee estimates<div class="muted">+ spread/slippage = $6.59 total account drop · *s5 added 2 patches, 0 bugs</div></div>
+          <div class="count" style="color:var(--accent-amber)">14</div>
+          <div class="fees" style="color:var(--accent-green)">~$4.70</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ALERTS GRID -->
+  <section class="section">
+    <div class="section-header">
+      <div class="section-num">/04</div>
+      <h2 class="section-title">Active Signal Channels</h2>
+      <div class="section-tag">6 alerts · all once-per-bar-close</div>
+    </div>
+    <div class="alerts-grid">
+      <div class="alert-card">
+        <span class="status-dot"></span>
+        <div class="alert-name">LONG Entry</div>
+        <div class="alert-action">Supertrend cross above + RSI &gt; 50</div>
+        <div class="alert-payload">{"action": "LONG", "symbol": "ETHUSD", "price": {{close}}, "supertrend": {{plot_0}}}</div>
+      </div>
+      <div class="alert-card">
+        <span class="status-dot"></span>
+        <div class="alert-name">SHORT Entry</div>
+        <div class="alert-action">Supertrend cross below + RSI &lt; 50</div>
+        <div class="alert-payload">{"action": "SHORT", "symbol": "ETHUSD", "price": {{close}}, "supertrend": {{plot_0}}}</div>
+      </div>
+      <div class="alert-card">
+        <span class="status-dot"></span>
+        <div class="alert-name">Hard Stop</div>
+        <div class="alert-action">Supertrend reversal · primary exit</div>
+        <div class="alert-payload">{"action": "CLOSE_HARDSTOP", "symbol": "ETHUSD", "price": {{close}}}</div>
+      </div>
+      <div class="alert-card">
+        <span class="status-dot"></span>
+        <div class="alert-name">Soft Stop</div>
+        <div class="alert-action">RSI exhaustion · 30 / 70 thresholds</div>
+        <div class="alert-payload">{"action": "CLOSE_SOFTSTOP", "symbol": "ETHUSD", "price": {{close}}}</div>
+      </div>
+      <div class="alert-card">
+        <span class="status-dot"></span>
+        <div class="alert-name">Take Profit</div>
+        <div class="alert-action">1.5× SL distance from entry</div>
+        <div class="alert-payload">{"action": "CLOSE_TAKEPROFIT", "symbol": "ETHUSD", "price": {{close}}}</div>
+      </div>
+      <div class="alert-card">
+        <span class="status-dot"></span>
+        <div class="alert-name">Timeout</div>
+        <div class="alert-action">3 × 4H bars · 12 hour timeout</div>
+        <div class="alert-payload">{"action": "CLOSE_TIMEOUT", "symbol": "ETHUSD", "price": {{close}}}</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STRATEGY CONFIG -->
+  <section class="section">
+    <div class="section-header">
+      <div class="section-num">/05</div>
+      <h2 class="section-title">Strategy Configuration</h2>
+      <div class="section-tag">validation phase · 0.5% risk</div>
+    </div>
+    <table class="config-table">
+      <thead>
+        <tr><th>Parameter</th><th>Value</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="label">Strategy</td>
+          <td class="value">Supertrend(10, 3.0) + RSI(14)</td>
+          <td class="label">Pine v2-3 · ETH/USD 4H Kraken</td>
+        </tr>
+        <tr>
+          <td class="label">Risk per trade</td>
+          <td class="value">0.005 <span class="tag">VALIDATION</span></td>
+          <td class="label">0.5% · ~$0.81 max loss · bumps to 0.01 after 30+ trades</td>
+        </tr>
+        <tr>
+          <td class="label">Take profit</td>
+          <td class="value">1.5 × SL distance</td>
+          <td class="label">signal-driven CLOSE_TAKEPROFIT alert</td>
+        </tr>
+        <tr>
+          <td class="label">Time exit</td>
+          <td class="value">3 bars (12 hours)</td>
+          <td class="label">CLOSE_TIMEOUT after sustained sideways</td>
+        </tr>
+        <tr>
+          <td class="label">Max trades / day</td>
+          <td class="value">2</td>
+          <td class="label">enforced both Pine-side and risk_manager-side</td>
+        </tr>
+        <tr>
+          <td class="label">Streak gate</td>
+          <td class="value">5 consecutive losses → 24h pause</td>
+          <td class="label">automatic protection</td>
+        </tr>
+        <tr>
+          <td class="label">Drawdown gates</td>
+          <td class="value">15% soft · 20% hard</td>
+          <td class="label">soft = halve risk · hard = full stop</td>
+        </tr>
+        <tr>
+          <td class="label">Mode</td>
+          <td class="value">SPOT_ONLY_MODE = True</td>
+          <td class="label">long-side only · short signals are no-op</td>
+        </tr>
+        <tr>
+          <td class="label">Stack</td>
+          <td class="value">Python · Flask · Gunicorn · CCXT 4.5.46</td>
+          <td class="label">deployed via Railway from main branch</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- CALLOUT -->
+  <section class="section">
+    <div class="callout">
+      <div class="label">— Milestone Achieved</div>
+      <div class="text">A bot that <strong>watches the market 24/7</strong>, recognizes its own signals, sizes its own positions, places its own stop losses, calculates its own P&amp;L, and tells me about every move on Telegram. From <strong>curl-driven prototype</strong> to <strong>genuinely autonomous</strong> in four sessions — and then in session 5, <strong>production-hardened</strong> against the kind of transient infra failures that always look impossible until they happen. Retry-with-backoff on every hot-path API call, async webhook so TV never times out, Telegram alerts at every silent-failure spot. The only thing left is to let it earn its keep.</div>
+    </div>
+  </section>
+
+  <!-- WHAT'S NEXT -->
+  <section class="section">
+    <div class="section-header">
+      <div class="section-num">/06</div>
+      <h2 class="section-title">What Comes Next</h2>
+      <div class="section-tag">session 6 · validation phase</div>
+    </div>
+    <div class="two-col">
+      <div class="checklist">
+        <h3>Validation phase plan</h3>
+        <div class="item"><span class="check pending">◐</span><span class="item-text">Wait for next organic strategy signal</span><span class="item-meta">no eta</span></div>
+        <div class="item"><span class="check pending">◐</span><span class="item-text">Watch for first failure-path Telegram alert in wild</span><span class="item-meta">in-wild proof</span></div>
+        <div class="item"><span class="check pending">◐</span><span class="item-text">Collect 30+ trades into trades.csv</span><span class="item-meta">~3 months</span></div>
+        <div class="item"><span class="check pending">◐</span><span class="item-text">Evaluate edge from live data</span><span class="item-meta">post 30 trades</span></div>
+        <div class="item"><span class="check pending">◐</span><span class="item-text">If profitable → bump risk to 0.01 (production)</span><span class="item-meta">data-driven</span></div>
+        <div class="item"><span class="check pending">◐</span><span class="item-text">Strategy backtest vs live comparison</span><span class="item-meta">future</span></div>
+      </div>
+      <div class="checklist">
+        <h3>Backlog · operational hardening</h3>
+        <div class="item"><span class="check">✓</span><span class="item-text">SL placement retry / transient-error retry</span><span class="item-meta">s5 · shipped</span></div>
+        <div class="item"><span class="check">✓</span><span class="item-text">Async webhook · TV timeout-proof</span><span class="item-meta">s5 · shipped</span></div>
+        <div class="item"><span class="check">✓</span><span class="item-text">Error-path Telegram alerts (3 silent spots)</span><span class="item-meta">s5 · shipped</span></div>
+        <div class="item"><span class="check pending">◐</span><span class="item-text">Cosmetic cleanup · floating docstring + "Futures" comment in kraken_api.py</span><span class="item-meta">tier 1</span></div>
+        <div class="item"><span class="check pending">◐</span><span class="item-text">Fix /status endpoint · references missing RiskManager attrs</span><span class="item-meta">tier 1</span></div>
+        <div class="item"><span class="check pending">◐</span><span class="item-text">.gitignore · *.bak_* · patch_*.py · .DS_Store</span><span class="item-meta">tier 1</span></div>
+        <div class="item"><span class="check pending">◐</span><span class="item-text">Telegram alert dedupe (60s window) — if spam ever occurs</span><span class="item-meta">tier 2</span></div>
+        <div class="item"><span class="check pending">◐</span><span class="item-text">Decommission unused close_position()</span><span class="item-meta">cleanup</span></div>
+        <div class="item"><span class="check pending">◐</span><span class="item-text">Multi-asset expansion (BTC, SOL ready in parser)</span><span class="item-meta">future</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div>
+      <div style="color: var(--ink-secondary); margin-bottom: 4px;">Proppa Kraken Crypto Bot · Milestone Review</div>
+      <div>Generated end of session 05 · 28 April 2026 · for Ash, by Old Son</div>
+    </div>
+    <div class="ascii">    ░▒▓█  PROPPA  █▓▒░
+       ░▒▓█  KRAKEN  █▓▒░
+          AUTONOMOUS</div>
+  </footer>
+
+</div>
+</body>
+</html>

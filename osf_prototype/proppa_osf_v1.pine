@@ -1,0 +1,186 @@
+// © Riddell Industries Trading 2026
+// Proppa Kraken — Options Settlement Flow (OSF) v1.0
+// Strategy #2 — Calendar trigger for Wednesday entry / Friday exit
+// 
+// HOW THIS DIFFERS FROM V-C:
+// This Pine is a DUMB CALENDAR TRIGGER. It fires alerts on Wed/Fri close
+// without checking max pain, OI, or position state. The BOT does all
+// strategic evaluation (max pain ≥ 2% above price, OI ≥ $3B, lockout
+// with V-C, position management, take-profit, stop-loss).
+//
+// SIGNAL FLOW:
+//   Pine (Wed daily close confirmed) → OSF_ENTRY_REQUEST → Bot evaluates
+//   Pine (Fri daily close confirmed) → OSF_EXIT_TIME → Bot exits if open
+//
+// PAIR: KRAKEN:BTCUSD daily timeframe
+// VERSION: 1.0 (locked per StrategySpec 2026-05-06)
+
+//@version=5
+indicator(
+     title="Proppa Kraken OSF v1.0",
+     shorttitle="OSF v1",
+     overlay=true,
+     max_labels_count=500,
+     max_lines_count=500
+     )
+
+// ──────────────────────────────────────────────────────────────────────
+// SECTION 1 — INPUTS
+// ──────────────────────────────────────────────────────────────────────
+
+i_strategyName = input.string("OSF_v1", "Strategy Identifier",
+     tooltip="Sent in alert payload so bot routes to correct handler")
+
+i_symbol = input.string("BTCUSD", "Symbol for alert payload",
+     tooltip="Should match Kraken symbol the bot trades")
+
+i_showTable = input.bool(true, "Show diagnostic table",
+     group="Visual")
+
+i_showMarkers = input.bool(true, "Show entry/exit markers",
+     group="Visual")
+
+// ──────────────────────────────────────────────────────────────────────
+// SECTION 2 — TIMING LOGIC
+// ──────────────────────────────────────────────────────────────────────
+
+// Entry: Wednesday daily close confirmed
+// On UTC daily candles, Wed close = Thu 00:00 UTC = Thu 10:00 AEST
+isWednesdayClose = dayofweek == dayofweek.wednesday and barstate.isconfirmed
+
+// Exit: Friday daily close confirmed
+// On UTC daily candles, Fri close = Sat 00:00 UTC = Sat 10:00 AEST
+// (Holds position through Fri 08:00 UTC options settlement, exits next bar)
+isFridayClose = dayofweek == dayofweek.friday and barstate.isconfirmed
+
+// ──────────────────────────────────────────────────────────────────────
+// SECTION 3 — ALERT MESSAGE CONSTRUCTION
+// ──────────────────────────────────────────────────────────────────────
+
+// Build entry alert payload (matches V-C JSON structure)
+// Bot's signal_parser.py will read these fields
+f_entryAlert() =>
+    '{"symbol":"' + i_symbol +
+    '","side":"long",' +
+    '"signal_type":"OSF_ENTRY_REQUEST",' +
+    '"price":' + str.tostring(close, "0.00") +
+    ',"timestamp":"' + str.tostring(time, "yyyy-MM-dd'T'HH:mm:ssZ") +
+    '","strategy":"' + i_strategyName + '"}'
+
+// Build exit alert payload
+f_exitAlert() =>
+    '{"symbol":"' + i_symbol +
+    '","side":"long",' +
+    '"signal_type":"OSF_EXIT_TIME",' +
+    '"price":' + str.tostring(close, "0.00") +
+    ',"timestamp":"' + str.tostring(time, "yyyy-MM-dd'T'HH:mm:ssZ") +
+    '","strategy":"' + i_strategyName + '"}'
+
+// ──────────────────────────────────────────────────────────────────────
+// SECTION 4 — ALERT FIRING
+// ──────────────────────────────────────────────────────────────────────
+
+// Fire entry alert on Wednesday close (bot evaluates conditions)
+if isWednesdayClose
+    alert(f_entryAlert(), alert.freq_once_per_bar_close)
+
+// Fire exit alert on Friday close (bot acts only if position open)
+if isFridayClose
+    alert(f_exitAlert(), alert.freq_once_per_bar_close)
+
+// ──────────────────────────────────────────────────────────────────────
+// SECTION 5 — VISUAL CHART MARKERS
+// ──────────────────────────────────────────────────────────────────────
+
+// Entry marker: green upward triangle below bar
+plotshape(
+     i_showMarkers and isWednesdayClose,
+     title="OSF ENTRY",
+     style=shape.triangleup,
+     location=location.belowbar,
+     color=color.new(color.green, 0),
+     size=size.small,
+     text="OSF\nENTRY",
+     textcolor=color.green
+     )
+
+// Exit marker: red downward triangle above bar
+plotshape(
+     i_showMarkers and isFridayClose,
+     title="OSF EXIT",
+     style=shape.triangledown,
+     location=location.abovebar,
+     color=color.new(color.red, 0),
+     size=size.small,
+     text="OSF\nEXIT",
+     textcolor=color.red
+     )
+
+// Optional: highlight Wed-Fri hold period with subtle background
+bgcolor(
+     i_showMarkers and (dayofweek == dayofweek.thursday or dayofweek == dayofweek.friday) ?
+       color.new(color.green, 95) : na,
+     title="OSF Hold Window"
+     )
+
+// ──────────────────────────────────────────────────────────────────────
+// SECTION 6 — DIAGNOSTIC TABLE
+// ──────────────────────────────────────────────────────────────────────
+
+if i_showTable and barstate.islast
+    var table diagTable = table.new(
+         position=position.top_right,
+         columns=2,
+         rows=8,
+         bgcolor=color.new(color.black, 80),
+         border_width=1
+         )
+    
+    // Header
+    table.cell(diagTable, 0, 0, "OSF v1.0 STATUS",
+         text_color=color.white, text_size=size.small, bgcolor=color.new(color.blue, 50))
+    table.cell(diagTable, 1, 0, "",
+         bgcolor=color.new(color.blue, 50))
+    
+    // Day of week
+    dayName = dayofweek == 1 ? "Sunday" :
+              dayofweek == 2 ? "Monday" :
+              dayofweek == 3 ? "Tuesday" :
+              dayofweek == 4 ? "Wednesday" :
+              dayofweek == 5 ? "Thursday" :
+              dayofweek == 6 ? "Friday" : "Saturday"
+    table.cell(diagTable, 0, 1, "Current day", text_color=color.gray, text_size=size.small)
+    table.cell(diagTable, 1, 1, dayName, text_color=color.white, text_size=size.small)
+    
+    // Strategy state
+    nextEvent = dayofweek == 4 ? "ENTRY at this close" :
+                dayofweek == 5 ? "Holding (1 day to exit)" :
+                dayofweek == 6 ? "EXIT at this close" :
+                dayofweek == 7 ? "Idle (next entry Wed)" :
+                dayofweek == 1 ? "Idle (V-C may fire)" :
+                dayofweek == 2 ? "Idle (V-C may exit)" :
+                dayofweek == 3 ? "Idle (1 day to entry)" : "—"
+    table.cell(diagTable, 0, 2, "Next event", text_color=color.gray, text_size=size.small)
+    table.cell(diagTable, 1, 2, nextEvent, text_color=color.yellow, text_size=size.small)
+    
+    // Current price
+    table.cell(diagTable, 0, 3, "Current price", text_color=color.gray, text_size=size.small)
+    table.cell(diagTable, 1, 3, "$" + str.tostring(close, "#,###.00"),
+         text_color=color.white, text_size=size.small)
+    
+    // Bar confirmed?
+    table.cell(diagTable, 0, 4, "Bar confirmed", text_color=color.gray, text_size=size.small)
+    table.cell(diagTable, 1, 4, barstate.isconfirmed ? "YES" : "NO (live)",
+         text_color=barstate.isconfirmed ? color.green : color.orange, text_size=size.small)
+    
+    // Strategy ID
+    table.cell(diagTable, 0, 5, "Strategy", text_color=color.gray, text_size=size.small)
+    table.cell(diagTable, 1, 5, i_strategyName, text_color=color.white, text_size=size.small)
+    
+    // Symbol
+    table.cell(diagTable, 0, 6, "Symbol", text_color=color.gray, text_size=size.small)
+    table.cell(diagTable, 1, 6, i_symbol, text_color=color.white, text_size=size.small)
+    
+    // Note about bot
+    table.cell(diagTable, 0, 7, "Eval logic", text_color=color.gray, text_size=size.small)
+    table.cell(diagTable, 1, 7, "Bot-side", text_color=color.aqua, text_size=size.small)

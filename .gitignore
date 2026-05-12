@@ -1,0 +1,28 @@
+# macOS noise
+.DS_Store
+**/.DS_Store
+
+# Python bytecode and caches
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Runtime artefacts — bot logs and live trade ledger
+logs/
+*.log
+trades.csv
+
+# Editor noise
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment variables (NEVER commit secrets)
+.env
+.env.local
