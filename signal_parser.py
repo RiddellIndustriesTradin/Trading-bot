@@ -18,11 +18,13 @@ logger = logging.getLogger(__name__)
 # Exit:  MONDAY_EXIT (Monday close UTC)
 # SL fills are detected via Kraken position state in main.py, not via TV alert
 VALID_ACTIONS = {
-    "SUNDAY_ENTRY",
-    "MONDAY_EXIT",
+    "SUNDAY_ENTRY",        # V-C entry (Sunday close UTC)
+    "MONDAY_EXIT",         # V-C exit (Monday close UTC)
+    "OSF_ENTRY_REQUEST",   # OSF v1 entry (Wednesday close UTC, bot evaluates gates)
+    "OSF_EXIT_TIME",       # OSF v1 scheduled exit (Friday close UTC)
 }
 
-# Variant C is BTC-only per multi-pair backtest results.
+# Variant C and OSF v1 are both BTC-only per backtest results.
 # ETH and SOL failed gates on Variant C — see migration spec §11.
 VALID_SYMBOLS = {"BTCUSD"}
 
@@ -36,8 +38,10 @@ class SignalParser:
         Parse webhook payload.
         
         Expected payload format:
-            {"symbol": "BTCUSD", "action": "SUNDAY_ENTRY", "price": 78400.00}
-            {"symbol": "BTCUSD", "action": "MONDAY_EXIT",  "price": 78850.00}
+            V-C:  {"symbol": "BTCUSD", "action": "SUNDAY_ENTRY", "price": 78400.00}
+            V-C:  {"symbol": "BTCUSD", "action": "MONDAY_EXIT",  "price": 78850.00}
+            OSF:  {"symbol": "BTCUSD", "signal_type": "OSF_ENTRY_REQUEST", "price": 80000.00, "strategy": "OSF_v1"}
+            OSF:  {"symbol": "BTCUSD", "signal_type": "OSF_EXIT_TIME",     "price": 80500.00, "strategy": "OSF_v1"}
         
         Args:
             payload: Webhook JSON payload
@@ -48,7 +52,8 @@ class SignalParser:
         try:
             # Extract required fields
             symbol = payload.get("symbol", "").upper()
-            action = payload.get("action", "").upper()
+            # V-C sends "action"; OSF sends "signal_type". Normalize to single internal field.
+            action = payload.get("action", "").upper() or payload.get("signal_type", "").upper()
             price = payload.get("price")
             
             # Validate symbol
